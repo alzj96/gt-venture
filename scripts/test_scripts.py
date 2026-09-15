@@ -554,6 +554,97 @@ class TestSensitive(Base):
         self.assertEqual(r.returncode, 1)
 
 
+
+class TestSignals(Base):
+    """正向信号。和「模式」对称的另一半，约束必须一样严。
+
+    加这一组的理由不是好听：模式库七类全是毛病，只记毛病的话，
+    一个人来第三次时开场白就是一份罪状清单——而这个技能的存亡标准
+    是他会不会来第四次。
+    """
+
+    def test_signal_writes_its_own_file(self):
+        """强项和模式不共用文件，两边互不覆盖。
+
+        parse/render 被这两条命令共用，共用之后最容易出的事是
+        一个命令把另一个的文件写没了。
+        """
+        run(PATTERN, "log", "--kind", "高估需求", "--note", "甲甲甲", ws=self.ws)
+        run(PATTERN, "signal", "--kind", "说得出人", "--note", "乙乙乙", ws=self.ws)
+        d = self.ws / "创业档案"
+        self.assertIn("甲甲甲", (d / "模式.md").read_text(encoding="utf-8"))
+        self.assertIn("乙乙乙", (d / "强项.md").read_text(encoding="utf-8"))
+        self.assertNotIn("乙乙乙", (d / "模式.md").read_text(encoding="utf-8"))
+        self.assertNotIn("甲甲甲", (d / "强项.md").read_text(encoding="utf-8"))
+
+    def test_signal_has_the_same_leak_and_length_guards_as_log(self):
+        """[隐私] 只在 log 那边设闸的话，强项就是绕过去的口子。
+
+        两个文件都会在每次诊断开头被读进上下文，约束不对称等于没有约束。
+        """
+        r = run(PATTERN, "signal", "--kind", "说得出人",
+                "--note", "他微信13900001111", ws=self.ws)
+        self.assertEqual(r.returncode, 2, "强项文件放行了手机号")
+        r = run(PATTERN, "signal", "--kind", "说得出人",
+                "--note", "很长" * 45, ws=self.ws)
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse((self.ws / "创业档案" / "强项.md").exists(),
+                         "被拒的写入不该留下文件")
+
+    def test_signal_rejects_freeform_kind(self):
+        """自由文本会让「第几次」失效，而这里的全部价值就在第几次。"""
+        r = run(PATTERN, "signal", "--kind", "很有想法", "--note", "x", ws=self.ws)
+        self.assertNotEqual(r.returncode, 0)
+
+    def test_show_puts_signals_before_faults(self):
+        """顺序是刻意的，不是排版。倒过来就回到了罪状清单。"""
+        run(PATTERN, "log", "--kind", "高估需求", "--note", "毛病记录", ws=self.ws)
+        run(PATTERN, "signal", "--kind", "砍得动", "--note", "优点记录", ws=self.ws)
+        out = run(PATTERN, "show", ws=self.ws).stdout
+        self.assertIn("做对过什么", out)
+        self.assertLess(out.index("优点记录"), out.index("毛病记录"),
+                        "毛病排在了强项前面")
+
+    def test_show_surfaces_signals_even_with_no_faults(self):
+        """[严重] cmd_show 在没有模式记录时提前 return 0。
+
+        强项打印放在那个 return 之后的话，只有优点没有毛病的用户
+        —— 也就是表现最好的那个 —— 反而什么都看不到。
+        """
+        run(PATTERN, "signal", "--kind", "拿得出证据", "--note", "只有优点", ws=self.ws)
+        r = run(PATTERN, "show", ws=self.ws)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("只有优点", r.stdout)
+
+    def test_homework_done_changes_the_opening(self):
+        """这一条有行为后果：做了作业的人，开场该问结果，不该从头来。"""
+        run(PATTERN, "signal", "--kind", "上次的作业做了",
+            "--note", "上次让他找的三个人都聊了", ws=self.ws)
+        self.assertIn("开场", run(PATTERN, "show", ws=self.ws).stdout)
+
+    def test_signal_file_is_not_counted_as_a_project(self):
+        """[中] find 曾把 资源.md / 模式.md 当成诊断项目列出来。同款 bug。
+
+        强项.md 被算成项目的话，单项目工作空间会误报「多个客户会串」。
+        """
+        run(ARCHIVE, "save", "--project", "只有一个", "--step", "1",
+            "--answer", "x", ws=self.ws)
+        run(PATTERN, "signal", "--kind", "砍得动", "--note", "x", ws=self.ws)
+        self.assertNotIn("会串", run(PATTERN, "show", ws=self.ws).stdout)
+
+    def test_signal_preserves_handwritten_section(self):
+        """手工模式是文档明确宣传的，render 不能静默删掉手写小节。"""
+        d = self.ws / "创业档案"
+        d.mkdir(parents=True)
+        (d / "强项.md").write_text(
+            "# 这个人做对过什么\n\n## 手写的观察\n\n- 2026-08-02　｜　别删我\n",
+            encoding="utf-8")
+        run(PATTERN, "signal", "--kind", "砍得动", "--note", "新记录", ws=self.ws)
+        body = (d / "强项.md").read_text(encoding="utf-8")
+        self.assertIn("别删我", body)
+        self.assertIn("新记录", body)
+
+
 class TestCheckRules(unittest.TestCase):
 
     def test_separates_freshness_from_coverage(self):

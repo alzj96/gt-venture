@@ -25,6 +25,7 @@
 用法：
     python3 pattern.py show
     python3 pattern.py log --kind 高估需求 --note "第1问又是先说市场规模"
+    python3 pattern.py signal --kind 反驳过我 --note "前提第1条被他当场推翻，给了理由"
     python3 pattern.py --workspace /path/to/ws show
 """
 
@@ -37,6 +38,7 @@ from pathlib import Path
 ARCHIVE_DIR = "创业档案"
 PATTERN_FILE = "模式.md"
 SENSITIVE_FILE = "敏感问题.md"
+SIGNAL_FILE = "强项.md"
 
 # 只认这七类。自由文本会让统计失效，而这里的全部价值就在「第几次」。
 KINDS = {
@@ -47,6 +49,27 @@ KINDS = {
     "跟风": "洞察是「AI 现在很火」这类所有人都看得到的",
     "低估合规": "对资质、备案、主体资格没概念，或想用变通绕过去",
     "低估竞品": "说「还没人做」或「现有的都不好用」，但没查过",
+}
+
+# 正向信号：这个人做对过什么。
+#
+# 上面七类全是毛病。只记毛病的话，一个人来第三次时开场白就是一份罪状清单——
+# 而这个技能的存亡标准是他会不会来第四次。
+#
+# 但这六类不是为了好听才有的，每一条都有诊断用途：
+#   · 反驳过我      —— 他在前提确认那一步推翻过我并说得出理由。有真判断的人
+#                      可以问得更硬，也不必花力气做心理铺垫
+#   · 上次的作业做了 —— 直接决定下次怎么开场。做了的人问"那三个人聊出什么了"，
+#                      没做的人问了只会尴尬，该换成更小的动作
+#   · 说得出人 / 拿得出证据 —— 连续两次出现，第 1、3 问可以问得快些，
+#                      省下的轮次放到闸门上
+SIGNALS = {
+    "说得出人": "第3问给得出一个真人——名字、关系、上次抱怨的原话",
+    "拿得出证据": "第1问给的是行为证据（付过钱、花过时间），不是意见",
+    "砍得动": "第4问真的砍到了一个功能一类人，没有护着原方案",
+    "有一手观察": "第5问的洞察来自他自己待在里面的时间，不是二手结论",
+    "反驳过我": "在前提确认那一步推翻过我的某一条，并说得出理由",
+    "上次的作业做了": "上次诊断给的下一步，这次回来时已经做了",
 }
 
 # 模式文件可能被别的项目的细节污染，这里在写入时挡一道
@@ -89,6 +112,10 @@ def sensitive_path() -> Path:
     return (_WORKSPACE or Path.cwd()) / ARCHIVE_DIR / SENSITIVE_FILE
 
 
+def signal_path() -> Path:
+    return (_WORKSPACE or Path.cwd()) / ARCHIVE_DIR / SIGNAL_FILE
+
+
 def read_sensitive() -> dict:
     """{问号: 次数}。文件不在就是空。"""
     p = sensitive_path()
@@ -114,9 +141,9 @@ def write_sensitive(data: dict) -> None:
     p.write_text(body, encoding="utf-8")
 
 
-def parse() -> dict:
+def parse(path: Path = None) -> dict:
     """返回 {类型: [(日期, 备注), ...]}。"""
-    p = pattern_path()
+    p = path or pattern_path()
     if not p.is_file():
         return {}
     out, kind = {}, None
@@ -132,15 +159,17 @@ def parse() -> dict:
     return out
 
 
-def render(data: dict) -> str:
-    head = ("# 跨项目模式\n\n"
-            "同一个人在不同项目上反复出现的倾向。只记倾向，不记项目细节。\n"
-            f"\n最后更新: {today()}\n")
+def render(data: dict, head: str = None, kinds: dict = None) -> str:
+    kinds = KINDS if kinds is None else kinds
+    head = head if head is not None else (
+        "# 跨项目模式\n\n"
+        "同一个人在不同项目上反复出现的倾向。只记倾向，不记项目细节。\n"
+        f"\n最后更新: {today()}\n")
     body = ""
     # 先按词表顺序输出已知类型，再把手写的未知小节原样带回去。
     # 只遍历 KINDS 会让「跑一次 log 就静默删掉用户手写的那一节」，
     # 退出码还是 0 —— 手工模式是文档明确宣传的，不能这么对待它。
-    for kind in list(KINDS) + [k for k in data if k not in KINDS]:
+    for kind in list(kinds) + [k for k in data if k not in kinds]:
         hits = data.get(kind) or []
         if not hits:
             continue
@@ -158,14 +187,9 @@ def cmd_log(args) -> int:
         return 1
 
     note = args.note.strip()
-    for pat, name in LEAK_PATTERNS:
-        if pat.search(note):
-            print(f"拒绝写入：模式文件不存 {name}。", file=sys.stderr)
-            print("这个文件每次诊断开头都会被读进上下文，只写倾向，不写细节。", file=sys.stderr)
-            return 2
-    if len(note) > 80:
-        print(f"备注太长（{len(note)} 字）。模式只记一句话，细节留在项目档案里。", file=sys.stderr)
-        return 1
+    rc = _guard_note(note)
+    if rc:
+        return rc
 
     data = parse()
     data.setdefault(args.kind, []).append((today(), note))
@@ -177,6 +201,57 @@ def cmd_log(args) -> int:
     print(f"已记：{args.kind}（第 {n} 次）")
     if n >= 2:
         print(f"⚠️  这是第 {n} 次了。下次诊断开头就该提醒用户，别等他自己撞上。")
+    return 0
+
+
+def _guard_note(note: str) -> int:
+    """模式和强项共用的两道闸：不存联系方式，不存长文。
+
+    两个文件都会在每次诊断开头被读进上下文，所以约束必须一样严——
+    只在模式那边设闸，强项就成了绕过去的口子。
+    """
+    for pat, name in LEAK_PATTERNS:
+        if pat.search(note):
+            print(f"拒绝写入：这个文件不存 {name}。", file=sys.stderr)
+            print("它每次诊断开头都会被读进上下文，只写倾向，不写细节。", file=sys.stderr)
+            return 2
+    if len(note) > 80:
+        print(f"备注太长（{len(note)} 字）。只记一句话，细节留在项目档案里。", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_signal(args) -> int:
+    """记一条「这次他做对了什么」。
+
+    和 log 是对称的两半，但不共用文件：show 要先输出强项再输出毛病，
+    分文件比在一个文件里排序可靠，手工模式下也更好读。
+    """
+    if args.kind not in SIGNALS:
+        print("kind 必须是这六类之一：", file=sys.stderr)
+        for k, v in SIGNALS.items():
+            print(f"  {k} —— {v}", file=sys.stderr)
+        return 1
+
+    note = args.note.strip()
+    rc = _guard_note(note)
+    if rc:
+        return rc
+
+    data = parse(signal_path())
+    data.setdefault(args.kind, []).append((today(), note))
+    head = ("# 这个人做对过什么\n\n"
+            "和「模式」对称的另一半。只记倾向，不记项目细节。\n"
+            "诊断开头先说这些，再说反复出现的毛病——顺序会决定他要不要接着聊。\n"
+            f"\n最后更新: {today()}\n")
+    sp = signal_path()
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(render(data, head=head, kinds=SIGNALS), encoding="utf-8")
+
+    n = len(data[args.kind])
+    print(f"已记：{args.kind}（第 {n} 次）")
+    if args.kind == "上次的作业做了":
+        print("↑ 下次开场直接问上次那件事的结果，别从头来。")
     return 0
 
 
@@ -224,7 +299,7 @@ def _multi_owner_warning() -> None:
     if not root.is_dir():
         return
     projects = [p.stem.split("-诊断-")[0] for p in root.glob("*.md")
-                if p.name not in {PATTERN_FILE, SENSITIVE_FILE}]
+                if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]
     if len(set(projects)) >= 2:
         print(f"ℹ️  这个工作空间里有 {len(set(projects))} 个项目的档案。")
         print("   下面的模式和敏感问题是「关于这个人」的，不是关于项目的。")
@@ -232,8 +307,30 @@ def _multi_owner_warning() -> None:
         print("   这些记录会串——换个目录，或者删掉重来。\n")
 
 
+def _print_signals() -> None:
+    """强项排在毛病前面输出。
+
+    这个顺序是刻意的，不是排版问题：先看到自己做对了什么，再看到反复错的地方，
+    这两句话的顺序会决定用户要不要接着聊。倒过来说，第三次回来的人面对的
+    就是一份罪状清单。
+    """
+    data = parse(signal_path())
+    hits = [(k, v) for k, v in data.items() if v]
+    if not hits:
+        return
+    print("这个人做对过什么：\n")
+    for kind, v in sorted(hits, key=lambda kv: len(kv[1]), reverse=True):
+        print(f"   {kind} —— {len(v)} 次（最近 {v[-1][0]}）")
+        print(f"     · {v[-1][0]} {v[-1][1]}")
+    if "上次的作业做了" in data:
+        print("\n开场先问上次那件事的结果，别从头来。")
+    print()
+    print("━" * 52 + "\n")
+
+
 def cmd_show(_args) -> int:
     _multi_owner_warning()
+    _print_signals()
     sens = read_sensitive()
     if sens:
         print("这个用户不方便回答的问题：\n")
@@ -290,6 +387,10 @@ def main() -> int:
     p_l.add_argument("--kind", required=True, help=" / ".join(KINDS))
     p_l.add_argument("--note", required=True, help="一句话，≤80 字，不含细节")
 
+    p_g = sub.add_parser("signal", help="诊断结束时记录本次他做对的地方")
+    p_g.add_argument("--kind", required=True, help=" / ".join(SIGNALS))
+    p_g.add_argument("--note", required=True, help="一句话，≤80 字，不含细节")
+
     ap.add_argument("--workspace", type=Path, default=None,
                     help="用户工作空间路径。默认当前目录。")
 
@@ -297,7 +398,7 @@ def main() -> int:
     global _WORKSPACE
     _WORKSPACE = args.workspace.resolve() if args.workspace else None
     return {"show": cmd_show, "log": cmd_log, "retire": cmd_retire,
-            "sensitive": cmd_sensitive}[args.cmd](args)
+            "sensitive": cmd_sensitive, "signal": cmd_signal}[args.cmd](args)
 
 
 if __name__ == "__main__":

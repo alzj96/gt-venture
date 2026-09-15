@@ -68,9 +68,9 @@ mutate "pattern 未知类型不崩（严重·第0步崩溃）" scripts/pattern.p
   'desc = KINDS.get(kind, "（手写类型，不在七类词表里）")' \
   'desc = KINDS[kind]'
 
-mutate "pattern 不删手写小节（严重·静默删数据）" scripts/pattern.py \
-  'for kind in list(KINDS) + [k for k in data if k not in KINDS]:' \
-  'for kind in KINDS:'
+mutate "pattern/强项 不删手写小节（严重·静默删数据）" scripts/pattern.py \
+  'for kind in list(kinds) + [k for k in data if k not in kinds]:' \
+  'for kind in kinds:'
 
 mutate "断点取第一个未答（中·跳答后漏问）" scripts/archive.py \
   '    done, next_q = progress(body)' \
@@ -125,8 +125,46 @@ mutate "敏感问题在 show 里浮出（行为自调优）" scripts/pattern.py 
 
 mutate "多主体串档提醒（gstack 同款缺陷）" scripts/pattern.py \
   '    _multi_owner_warning()
+    _print_signals()' \
+  '    _print_signals()'
+
+mutate "强项写自己的文件（共用 render 后最易串）" scripts/pattern.py \
+  'def signal_path() -> Path:
+    return (_WORKSPACE or Path.cwd()) / ARCHIVE_DIR / SIGNAL_FILE' \
+  'def signal_path() -> Path:
+    return (_WORKSPACE or Path.cwd()) / ARCHIVE_DIR / PATTERN_FILE'
+
+mutate "强项也挡联系方式和长文（隐私·不对称即无约束）" scripts/pattern.py \
+  '    rc = _guard_note(note)
+    if rc:
+        return rc
+
+    data = parse(signal_path())' \
+  '    rc = 0
+    if rc:
+        return rc
+
+    data = parse(signal_path())'
+
+mutate "强项在 show 里浮出（只有优点的人会全空）" scripts/pattern.py \
+  '    _multi_owner_warning()
+    _print_signals()
     sens = read_sensitive()' \
-  '    sens = read_sensitive()'
+  '    _multi_owner_warning()
+    sens = read_sensitive()'
+
+mutate "强项排在毛病前面（顺序决定他要不要接着聊）" scripts/pattern.py \
+  'def cmd_show(_args) -> int:
+    _multi_owner_warning()
+    _print_signals()' \
+  'def cmd_show(_args) -> int:
+    import atexit
+    atexit.register(_print_signals)
+    _multi_owner_warning()'
+
+mutate "强项.md 不算成一个项目（find 同款 bug）" scripts/pattern.py \
+  'if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]' \
+  'if p.name not in {PATTERN_FILE, SENSITIVE_FILE}]'
 
 mutate "筛查与半途诊断可区分（体验）" scripts/archive.py \
   '        elif d["mode"] == "筛查":' \
