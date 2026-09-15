@@ -96,6 +96,19 @@ class TestArchive(Base):
         screening_line = [l for l in out.splitlines() if "快看看" in l][0]
         self.assertNotIn("下一问", screening_line, "筛查不该被当成半途而废的诊断")
 
+    def test_side_hustle_mode_distinguishable(self):
+        """副业走四问不走六问，进度分母不同，不能显示成「已答 1/6」。"""
+        run(ARCHIVE, "mode", "--project", "接单", "--set", "副业", ws=self.ws)
+        run(ARCHIVE, "save", "--project", "接单", "--step", "1", "--answer", "x", ws=self.ws)
+        out = run(ARCHIVE, "find", ws=self.ws).stdout
+        self.assertIn("副业体检", out)
+        self.assertNotIn("/6", out, "副业不该套六问的分母")
+
+    def test_three_modes_all_accepted(self):
+        for mode in ("副业", "筛查", "诊断"):
+            r = run(ARCHIVE, "mode", "--project", f"P{mode}", "--set", mode, ws=self.ws)
+            self.assertEqual(r.returncode, 0, f"{mode} 被拒了")
+
     def test_mode_defaults_to_diagnosis(self):
         """没标模式时默认全面诊断 —— 保守的那一边。"""
         run(ARCHIVE, "save", "--project", "T", "--step", "1", "--answer", "x", ws=self.ws)
@@ -554,6 +567,19 @@ class TestCheckRules(unittest.TestCase):
         """失败模式库也会过期 —— 反例失效、竞品收费了、法规变了都会让它失准。"""
         r = run(CHECK)
         self.assertIn("failure-modes.md", r.stdout)
+
+    def test_side_hustle_reference_exists_and_has_four_questions(self):
+        """副业四问是独立的问题集，不是六问的子集。少一问就不成立。"""
+        f = SCRIPTS.parent / "references" / "side-hustle.md"
+        self.assertTrue(f.is_file(), "side-hustle.md 不存在")
+        t = f.read_text(encoding="utf-8")
+        import re as _re
+        qs = _re.findall(r"^## 第 (\d) 问", t, flags=_re.MULTILINE)
+        self.assertEqual(qs, ["1", "2", "3", "4"], f"应有四问，实际 {qs}")
+        # 第2问必须靠前 —— 在职冲突要早于谈钱
+        self.assertLess(t.index("## 第 2 问"), t.index("## 第 3 问"))
+        self.assertIn("竞业", t)
+        self.assertIn("职务发明", t)
 
     def test_every_failure_mode_has_counterexample(self):
         """[方法论] 没有反例的机制不许入库 —— 这是基数谬误的解药。

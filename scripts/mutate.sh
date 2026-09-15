@@ -129,7 +129,11 @@ mutate "多主体串档提醒（gstack 同款缺陷）" scripts/pattern.py \
   '    sens = read_sensitive()'
 
 mutate "筛查与半途诊断可区分（体验）" scripts/archive.py \
-  '        if d["mode"] == "筛查":' \
+  '        elif d["mode"] == "筛查":' \
+  '        elif False:'
+
+mutate "副业模式可区分（不套六问分母）" scripts/archive.py \
+  '        if d["mode"] == "副业":' \
   '        if False:'
 
 mutate "report 吃到文件末尾（严重·两份报告并存）" scripts/archive.py \
