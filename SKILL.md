@@ -27,6 +27,13 @@ description: 创业项目诊断——在动手之前把项目问清楚，指出�
 
 这条之所以是铁律，是因为它决定了这次对话是诊断还是附和。一个不追问的 AI 会顺着用户的叙述往下讲，讲得越顺，用户离真相越远——他会带着被加固过的错误判断去投入半年时间。
 
+**这个技能的立场写在 [ETHOS.md](ETHOS.md) 里**，四条，每条都带"什么能推翻它"。诊断不是中立的——同一个项目换一套信念就是另一个结论，所以信念得先摆出来。**其中两条会直接改变你怎么判**：
+
+- **量一下他和基础模型之间的距离** —— 这件事写成一个 skill 还剩什么？剩不下的是在收租，不是在筑墙
+- **能力不等于可托付**（税 = 错误代价 × 漏检率 × 不可预测性）—— 高税的活必须站着一个人，而在中国那往往具体成"一个有资质的主体签字"。**闸门检查不是合规附录，它是这条税在中国的具体形状**
+
+项目里有 AI、或者传统行业的人问"我这行能怎么用 AI"时，读 [AI 这一层怎么判](references/ai-era.md)。
+
 ## 让他纠正，不要让他生成
 
 这是铁律的配套手法。铁律说的是**不许放过**，这一条说的是**怎么才问得出来**。
@@ -77,6 +84,7 @@ description: 创业项目诊断——在动手之前把项目问清楚，指出�
 | 六问答完，查失败模式 | [references/failure-modes.md](references/failure-modes.md) |
 | 六问答完，要查闸门 | [references/rules-personal-eligibility.md](references/rules-personal-eligibility.md) 然后 [references/rules-miniprogram-categories.md](references/rules-miniprogram-categories.md) |
 | 业务里有充值/会员卡/次卡/年卡/存杯/预售，任何**先收钱后兑付**的形态 | [references/rules-prepaid.md](references/rules-prepaid.md) —— **随时触发，用户往往已经在违规状态里** |
+| 项目里有 AI，或传统行业的人问「我这行能怎么用 AI」 | [references/ai-era.md](references/ai-era.md) —— 量距离、可托付税、写不进文字的才是资产 |
 | 闸门查完，动笔之前 | [references/premise-check.md](references/premise-check.md) —— **一轮，把结论踩的前提摆出来让他推翻** |
 | 准备写报告 | [references/report-format.md](references/report-format.md) |
 | 报告出完，要问资源对接 | [references/resource-matching.md](references/resource-matching.md) |
