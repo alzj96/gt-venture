@@ -139,6 +139,18 @@ mutate "没报告时拒绝导出（中·空壳文件被转发）" scripts/report
   '    if not report:' \
   '    if False:'
 
+mutate "空的那一格也要打出来（严重·假装覆盖）" scripts/check_rules.py \
+  '        if fname is None:' \
+  '        if False:'
+
+mutate "说清楚类目只覆盖微信（中·平台偏向）" scripts/check_rules.py \
+  '"只覆盖微信小程序，且只有高频那几类。' \
+  '"覆盖主流渠道的类目要求。'
+
+mutate "失败模式库也露名（被扫了却没人知道）" scripts/check_rules.py \
+  '    if extra:' \
+  '    if False:'
+
 mutate "不把「新鲜」说成「有效」（严重·误导）" scripts/check_rules.py \
   'print(f"📅 拉取日期在保质期内 {len(fresh)} 条（{newest}–{oldest} 天前抄的）")' \
   'print(f"✓ 有效 {len(fresh)} 条（{newest}–{oldest} 天前核对）")'

@@ -25,6 +25,23 @@ from pathlib import Path
 
 DATE_RE = re.compile(r"拉取日期[:：]\s*(\d{4}-\d{2}-\d{2})")
 PENDING_RE = re.compile(r"状态[:：]\s*待证")
+
+# 四道闸：任何行业、任何事都要过这四道，所以这张表不随行业变。
+# (闸, 问的是什么, 对应的规则文件, 覆盖到什么程度)
+GATES = [
+    ("一、人", "这个人能不能做这件事", "rules-personal-eligibility.md",
+     "覆盖：在编教师 / 公务员 / 事业单位 / 在校学生 / 在职副业 / 职务成果 / 个人接单的税。\n"
+     "     未覆盖：医生、律师、会计师、军人、国企任职、外籍、失信被执行人。"),
+    ("二、事", "这件事本身要不要许可", None,
+     "整格空白 —— 食品经营、医疗器械、人力资源、旅行社、出版物、危化品……一条都没有。\n"
+     "     遇到就说不知道：给类别名 + 市场监管部门/12345 的入口。"),
+    ("三、地", "在哪个渠道上线，那个渠道要什么", "rules-miniprogram-categories.md",
+     "只覆盖微信小程序，且只有高频那几类。\n"
+     "     抖音/快手/支付宝/App商店/网站/公众号/视频号/线下，全没有。"),
+    ("四、钱", "钱怎么收、要不要办执照", "rules-money.md",
+     "覆盖：市场主体登记（已核）。待证：豁免那条线。未覆盖：发票开法、对公账户、社保、跨境。\n"
+     "     另见 rules-prepaid.md（预付款，不挑行业）与 E9（个人接单的税）。"),
+]
 # 取标题行作为条目名，找不到就退回文件名
 HEADING_RE = re.compile(r"^#{2,4}\s+(.+?)\s*$", re.MULTILINE)
 
@@ -111,10 +128,30 @@ def scan(refs: Path, max_age: int) -> int:
     print("━" * 52)
     print("注意：上面回答的只有一件事——「这条我们多久没抄过了」。")
     print("它不回答「这条法规还在不在」，也不回答「你这行覆盖没覆盖」。")
-    print("规则库覆盖的范围：")
-    for path in files:
-        head = path.read_text(encoding="utf-8").split("\n", 1)[0].lstrip("# ").strip()
-        print(f"  · {path.name} —— {head}")
+    # 按「闸门」报覆盖度，不按文件名报。
+    #
+    # 原先这里打的是文件名列表，那回答的是"我们有哪几个文件"，
+    # 而用户真正要知道的是"我这门生意要过的闸，你覆盖了哪几道"。
+    # 四道闸不挑行业（人 / 事 / 地 / 钱），内容永远不全，但框架必须完整——
+    # 所以空的那一格也要打出来，而且要打得比有的那几格更显眼。
+    print("按四道闸看覆盖度（框架见 references/gates.md）：")
+    present = {p.name for p in files}
+    for gate, question, fname, note in GATES:
+        if fname is None:
+            print(f"  ✗ {gate}：{question}")
+            print(f"     {note}")
+        elif fname in present:
+            print(f"  · {gate}：{question}")
+            print(f"     {note}")
+        else:
+            print(f"  ✗ {gate}：{question} —— 规则文件不在（{fname}）")
+    # 失败模式库不是闸门，但它同样会过期（反例失效、竞品收费了、法规变了），
+    # 所以它在保质期扫描里，得在这儿露个名字，否则没人知道它也被扫了。
+    extra = sorted(p.name for p in files
+                   if p.name not in {g[2] for g in GATES if g[2]})
+    if extra:
+        print(f"  （不属于闸门、但同样在扫描内：{'、'.join(extra)}）")
+    print()
     print("用户的业务不在覆盖范围内时，正确做法是明说不知道并给出查询链接，")
     print("也不要因为日期是绿的就以为那条法规还有效——那是两件事。")
     print("━" * 52)

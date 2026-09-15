@@ -880,7 +880,7 @@ class TestCheckRules(unittest.TestCase):
         r = run(CHECK)
         self.assertEqual(r.returncode, 0)
         self.assertIn("覆盖没覆盖", r.stdout, "没说清楚它不回答覆盖范围")
-        self.assertIn("规则库覆盖的范围", r.stdout)
+        self.assertIn("四道闸", r.stdout, "没有按闸门报覆盖度")
 
     def test_never_claims_the_rules_are_still_in_force(self):
         """[严重·误导] 「✓ 有效 N 条」被读成「这些法规还生效」，而它只量拉取日期。
@@ -896,9 +896,36 @@ class TestCheckRules(unittest.TestCase):
         self.assertIn("不说明那条法规还在生效", out, "没有把「新鲜」和「仍然有效」分开")
 
     def test_failure_modes_included_in_freshness_scan(self):
-        """失败模式库也会过期 —— 反例失效、竞品收费了、法规变了都会让它失准。"""
+        """失败模式库也会过期 —— 反例失效、竞品收费了、法规变了都会让它失准。
+
+        它不属于四道闸里的任何一道，所以改成按闸门报覆盖度之后，
+        它的名字差点从输出里整个消失——被扫了却没人知道它被扫了。
+        """
         r = run(CHECK)
         self.assertIn("failure-modes.md", r.stdout)
+
+    def test_every_gate_is_listed_even_the_empty_one(self):
+        """[严重·假装覆盖] 空的那一格不打出来，用户就以为四道闸都查过了。
+
+        「事」这一格（经营许可）整格没有内容。内容可以永远不全，
+        但框架必须永远完整——空格要打得比有内容的那几格更显眼。
+        """
+        out = run(CHECK).stdout
+        for gate in ["一、人", "二、事", "三、地", "四、钱"]:
+            self.assertIn(gate, out, f"少了一道闸：{gate}")
+        self.assertIn("✗ 二、事", out, "空的那一格没有被标成未覆盖")
+        # 只断言那个 ✗ 不够：把空格的分支砍掉之后，它会掉进
+        # 「规则文件不在」那条通用分支里，照样打出 ✗ —— 测试仍然绿，
+        # 而用户丢掉的恰恰是最要紧的那半句「遇到就说不知道，去哪儿查」。
+        self.assertIn("整格空白", out, "空格没有说清楚它为什么空")
+        self.assertIn("12345", out, "空格没有给出查询入口——那才是这一格的产出")
+
+    def test_says_the_channel_rules_are_wechat_only(self):
+        """[中·平台偏向] 类目库只覆盖微信小程序，第三轮差分撞到过抖音电商对不上。
+
+        不说清楚，模型会拿微信的类目去套别的渠道。
+        """
+        self.assertIn("只覆盖微信小程序", run(CHECK).stdout)
 
     def test_side_hustle_reference_exists_and_has_four_questions(self):
         """副业四问是独立的问题集，不是六问的子集。少一问就不成立。"""

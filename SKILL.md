@@ -82,7 +82,10 @@ description: 创业项目诊断——在动手之前把项目问清楚，指出�
 | 准备开始问问题（产品类） | [references/six-questions.md](references/six-questions.md) —— **先看开头的阶段表，决定问哪几问** |
 | 用户提到自己或合伙人在体制内 | [references/rules-personal-eligibility.md](references/rules-personal-eligibility.md) —— **优先级最高，随时触发** |
 | 六问答完，查失败模式 | [references/failure-modes.md](references/failure-modes.md) |
-| 六问答完，要查闸门 | [references/rules-personal-eligibility.md](references/rules-personal-eligibility.md) 然后 [references/rules-miniprogram-categories.md](references/rules-miniprogram-categories.md) |
+| 六问答完，要查闸门 | 先读 [references/gates.md](references/gates.md)（四道闸 + 我们覆盖到哪），再按它指的走 |
+| 第一道闸·人 | [references/rules-personal-eligibility.md](references/rules-personal-eligibility.md) —— **优先级最高** |
+| 第三道闸·地（**只覆盖微信小程序**） | [references/rules-miniprogram-categories.md](references/rules-miniprogram-categories.md) |
+| 第四道闸·钱（办不办执照、票怎么开） | [references/rules-money.md](references/rules-money.md) |
 | 业务里有充值/会员卡/次卡/年卡/存杯/预售，任何**先收钱后兑付**的形态 | [references/rules-prepaid.md](references/rules-prepaid.md) —— **随时触发，用户往往已经在违规状态里** |
 | 项目里有 AI，或传统行业的人问「我这行能怎么用 AI」 | [references/ai-era.md](references/ai-era.md) —— 量距离、可托付税、写不进文字的才是资产 |
 | 闸门查完，动笔之前 | [references/premise-check.md](references/premise-check.md) —— **一轮，把结论踩的前提摆出来让他推翻** |
@@ -406,7 +409,20 @@ python3 <技能目录>/scripts/archive.py --workspace "$(pwd)" save --project "<
 
 ## 第 2 步：中国闸门检查
 
-**两组必查，顺序不能反**（2a 主体资格 → 2b 类目资质），**外加一组按触发查**（预付式消费）。
+**任何行业、任何事，要过的闸只有四道**——读 [四道闸](references/gates.md)：
+
+| 闸 | 问的是 | 在这一步的哪儿 |
+| --- | --- | --- |
+| **一、人** | 这个人能不能做这件事 | 2a，**必查，最先查** |
+| **二、事** | 这件事本身要不要许可 | 见下「还有两道闸」——**规则库整格空白，但照样要问** |
+| **三、地** | 在哪个渠道上线 | 2b，**只覆盖微信小程序** |
+| **四、钱** | 钱怎么收、要不要办执照 | 见下「还有两道闸」 |
+
+**顺序不能反**：人不合格，后面三道白查；事没许可，渠道审核必然卡；渠道定了才知道要什么材料；钱这一格的答案取决于前三格。
+
+**内容永远不全，框架必须完整。** 规则库覆盖的行业有限，但这四道闸不挑行业——**没覆盖的那一格照样要告诉用户"你要过这道闸、大概要什么、去哪儿查"**，那比"我不知道"有用得多。
+
+另有一组按触发查：预付式消费（**不挑行业**，见下）。
 
 ### 先看会不会触发预付式消费
 
@@ -418,7 +434,7 @@ python3 <技能目录>/scripts/archive.py --workspace "$(pwd)" save --project "<
 
 **别用罚款金额开场。** 那个文件里写了为什么：吓住一个开店的人，他会关掉对话，不会去补合同。
 
-### 2a. 先查主体资格
+### 2a. 先查主体资格（第一道闸：人）
 
 读 [主体资格红线](references/rules-personal-eligibility.md)。
 
@@ -439,7 +455,7 @@ python3 <技能目录>/scripts/archive.py --workspace "$(pwd)" save --project "<
 
 理由：红线判定是重要的，但它不是诊断。在问问题的阶段陷进合规辩论，用户会带着"这事不能做"的情绪回答后面四问，那四个答案就废了。
 
-### 2b. 再查类目资质
+### 2b. 再查类目资质（第三道闸：地）
 
 根据用户描述的业务，判断它落在哪些服务类目上，读 [类目与资质](references/rules-miniprogram-categories.md)。
 
@@ -505,15 +521,29 @@ python3 <技能目录>/scripts/check_rules.py
 
 猜错类目的后果是后面整段闸门分析全是错的，而且错得很有说服力。
 
+### 还有两道闸：事、钱
+
+**这两道规则库覆盖得最少，但它们最不挑行业——所以最不能跳过。**
+
+**第二道闸：事（这件事本身要不要许可）。** 规则库**整格空白**：食品经营、医疗器械、人力资源服务、旅行社、出版物、危化品、烟草……一条都没有。
+
+这一格的正确动作**不是猜**，是 [四道闸](references/gates.md) 里那三句话：**说出他的业务落在哪一类经营活动上 → 给查询入口（当地市场监管部门 / 12315 / 12345）→ 说明这是他几小时能查完的事。**
+
+> 你这个要办的是食品经营许可，**这一类我的规则库没覆盖，具体要什么材料我不知道**。去问当地市场监管部门，或者打 12345，一般能当场问清楚。这是你一个下午能办完的事，**但一定要在开张之前办**。
+
+**第四道闸：钱（要不要办执照、票怎么开）。** 读 [钱这一格](references/rules-money.md)。市场主体登记那条有一手源；**"有没有不用办执照的口子"标着 `待证`——不要报具体金额，也不要说"你这个规模不用办"**。个人接单的税在主体资格那组的 E9，顺手一起过。
+
+**这两格的错是不对称的**（见下文「资质结论是重大主张」）：说错"需要办"，用户白跑一趟；说错"**不需要办**"，用户可能已经上线了才发现违规。所以这两格**永远不给否定结论**。
+
 ### 2c. 把闸门结果存进档案
 
-两组查完，写一段闸门检查结果存进去：
+四道闸走完（**包括没覆盖的那两格**），写一段闸门检查结果存进去：
 
 ```bash
 python3 <技能目录>/scripts/archive.py --workspace "$(pwd)" gate --project "<项目名>" --file <闸门结果临时路径>
 ```
 
-内容至少包含：主体资格查了没有、结论是什么；业务落在哪些类目；每条规则的原文、拉取日期、来源链接；哪些是规则库没覆盖、需要用户自己查的。
+内容至少包含：**四道闸逐格的结论**（人 / 事 / 地 / 钱），每格写查了没有、结论是什么；有原文的附原文、拉取日期、来源链接；**没覆盖的那几格写明业务落在哪一类、让用户去哪儿查**；触发了预付式消费的单列一条。
 
 **这一步不能跳。** 用户下次回来时，闸门结论比六问答案更容易忘——他会记得自己说过什么，但记不住"教育类目要哪个证"。
 

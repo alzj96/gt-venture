@@ -85,8 +85,10 @@ references/
   premise-check.md        写报告之前那一轮：把结论踩的前提摆出来让他推翻
   failure-modes.md        16 条失败模式，带索引按需读
   side-hustle.md          副业/接单四问（不走六问）
-  rules-personal-eligibility.md   主体资格红线（教师/公务员/事业单位/在职副业）
-  rules-miniprogram-categories.md 微信类目与资质 + 教育 APP 备案
+  gates.md                四道闸（人/事/地/钱）+ 逐格摆出我们覆盖到哪
+  rules-personal-eligibility.md   第一道闸·人：身份限制的四种形状 + 条文
+  rules-miniprogram-categories.md 第三道闸·地：**只覆盖微信小程序**
+  rules-money.md          第四道闸·钱：要不要办执照、票怎么开
   rules-prepaid.md        预付式消费：收预付款必须签书面合同（不挑行业）
   ai-era.md               项目里有 AI 时：量你和基础模型的距离、可托付税、写不进文字的才是资产
   report-format.md        三份报告骨架：全面诊断 / 副业体检 / 轻量筛查
@@ -98,7 +100,7 @@ scripts/
   resources.py            资源档案、同意门三档、脱敏
   pattern.py              跨项目模式、正向信号、敏感问题、退役
   report_html.py          把报告导成单文件 HTML（样式内联、不连外网、能转发）
-  test_scripts.py         80 条回归测试
+  test_scripts.py         82 条回归测试
   mutate.sh               变异测试：回滚每个修复，确认测试抓得住
 evals/                    9 条 eval + fixture
 docs/                     方法论
@@ -106,7 +108,20 @@ docs/                     方法论
 
 ### 规则库
 
-**三组，每条带一手源原文、拉取日期、来源链接**：
+**任何行业、任何事，要过的闸只有四道**——[gates.md](references/gates.md) 把它们和"我们覆盖到哪"逐格摆出来：
+
+| 闸 | 问的是 | 覆盖 |
+| --- | --- | --- |
+| **人** | 这个人能不能做 | 编制/公职、在职副业、职务成果；**医生律师会计师没有** |
+| **事** | 这件事要不要许可 | **整格空白** —— 说不知道 + 给查询入口 |
+| **地** | 在哪个渠道上线 | **只有微信小程序**；抖音/支付宝/App/网站全没有 |
+| **钱** | 钱怎么收、要不要办执照 | 市场主体登记已核；豁免那条线 `待证` |
+
+**内容永远不全，框架必须完整。** 规则库覆盖的行业有限，但四道闸不挑行业——没覆盖的那一格照样告诉你"要过这道闸、大概要什么、去哪儿查"，**那比"我不知道"有用得多**。
+
+`check_rules.py` 会按闸门把覆盖度打出来，**空的那一格打得比有内容的更显眼**。
+
+覆盖到的部分，**每条带一手源原文、拉取日期、来源链接**：
 
 **主体资格红线**（这个人能不能做这件事）
 - 教师〔2015〕5号六条严禁（在职中小学教师）
@@ -144,7 +159,7 @@ docs/                     方法论
 ## 开发
 
 ```bash
-python3 scripts/test_scripts.py   # 80 条回归，每条对应一个真实发生过的 bug
+python3 scripts/test_scripts.py   # 82 条回归，每条对应一个真实发生过的 bug
 bash scripts/mutate.sh            # 变异测试：回滚每个修复，确认测试真的抓得住
 ```
 
