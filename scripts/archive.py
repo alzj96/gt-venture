@@ -202,6 +202,26 @@ def write(doc: dict, body: str, *, answered: int, status: str) -> None:
     doc["path"].write_text(header + "\n" + body.strip() + "\n", encoding="utf-8")
 
 
+# 「未答」在一段里出现，不等于这一问没答。
+#
+# 这里曾经是一句 `UNANSWERED not in 整段`，实测被两件事同时咬中：
+#   · `save --append --declined 不方便` 会在已有答案下面追一行「未答（不方便）」，
+#     于是一个答过的问题被回退（已答 5/6 → 4/6），下一问倒退回第 5 问
+#   · 用户原话或手工补的说明里只要带上「未答」两个字，整问同样被判成没答
+#
+# 真正的判据是：**除掉未答标记之后，还剩不剩下实质内容。**
+# 剩下了就是答过的 —— 追问里他说「这条不方便」，不抵消他前面已经说过的话。
+def _has_real_answer(section: str) -> bool:
+    for line in section.splitlines():
+        t = line.strip().lstrip("> ").strip()
+        if not t or t.startswith("——") or t.startswith("--"):
+            continue          # 空行和「—— 追问后 ——」这类分隔行不算内容
+        if t.startswith(UNANSWERED):
+            continue          # 「未答」「未答（不方便）」这类标记行不算内容
+        return True
+    return False
+
+
 def progress(body: str) -> tuple:
     """(已答数, 下一个未答的问号)。唯一真相来源，三处命令共用。
 
@@ -213,8 +233,7 @@ def progress(body: str) -> tuple:
     for i in range(1, TOTAL_STEPS + 1):
         m = re.search(rf"^## 第{i}问[^\n]*\n(.*?)(?=^## |\Z)", body,
                       re.MULTILINE | re.DOTALL)
-        answered = bool(m and m.group(1).strip() and UNANSWERED not in m.group(1))
-        if answered:
+        if m and _has_real_answer(m.group(1)):
             done += 1
         elif nxt > TOTAL_STEPS:
             nxt = i

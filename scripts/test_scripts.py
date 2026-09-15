@@ -94,6 +94,47 @@ class TestArchive(Base):
         out = run(ARCHIVE, "find", ws=self.ws).stdout
         self.assertIn("手工项目", out, f"手工档案被漏掉了：\n{out}")
 
+    def test_append_declined_does_not_roll_back_an_answered_question(self):
+        """[严重·进度倒退] 追问里说「不方便」，把已答过的那一问退回未答。
+
+        实测：第 5 问答完（5/6），再 `--append --declined 不方便` 之后
+        变成 4/6、下一问倒退回第 5 问——诊断师会把答过的问题重问一遍，
+        正是这个技能最想避免的事。
+
+        根因：progress() 用「整段里有没有出现『未答』」判断，而 append
+        把标记追加在真答案下面，两者同时存在。
+        """
+        for i in range(1, 6):
+            run(ARCHIVE, "save", "--project", "回退", "--step", i,
+                "--answer", f"第{i}问的答案", ws=self.ws)
+        self.assertIn("已答 5/6", run(ARCHIVE, "find", ws=self.ws).stdout)
+
+        run(ARCHIVE, "save", "--project", "回退", "--step", "5", "--append",
+            "--declined", "不方便", "--answer", "这个不太好说", ws=self.ws)
+        out = run(ARCHIVE, "find", ws=self.ws).stdout
+        self.assertIn("已答 5/6", out, f"答过的一问被退回未答：\n{out}")
+
+    def test_the_word_unanswered_inside_a_real_answer_is_not_a_marker(self):
+        """[中] 用户原话或手工补的说明里带「未答」二字，整问被判成没答。
+
+        实测里踩到过：脚本出错后手工改档案，说明文字里写了「未答」，
+        `find` 当场把那一问算成空的。判据应该是「除掉标记还剩不剩内容」，
+        不是「整段里有没有这两个字」。
+        """
+        run(ARCHIVE, "save", "--project", "字面", "--step", "1",
+            "--answer", "上次那个问题我未答完，这次补上", ws=self.ws)
+        self.assertIn("已答 1/6", run(ARCHIVE, "find", ws=self.ws).stdout)
+
+    def test_a_genuinely_declined_question_still_counts_as_unanswered(self):
+        """修完上面两条不能把真·未答也放过去——那会让报告漏标。"""
+        run(ARCHIVE, "save", "--project", "真未答", "--step", "1",
+            "--answer", "答了", ws=self.ws)
+        run(ARCHIVE, "save", "--project", "真未答", "--step", "2",
+            "--declined", "不方便", "--answer", "别问了", ws=self.ws)
+        out = run(ARCHIVE, "find", ws=self.ws).stdout
+        self.assertIn("已答 1/6", out)
+        self.assertIn("下一问是第 2 问", out)
+
     def test_project_name_is_exact_key(self):
         """[严重] 子串回退曾让「宠物寄养小程序」静默覆盖「宠物寄养」的答案。"""
         run(ARCHIVE, "save", "--project", "宠物寄养", "--step", "1",
@@ -722,11 +763,28 @@ class TestSignals(Base):
 class TestCheckRules(unittest.TestCase):
 
     def test_separates_freshness_from_coverage(self):
-        """[中] 对根本没覆盖的行业曾报「✓ 有效 N 条」绿灯，被误读成「这行查过了」。"""
+        """[中] 对根本没覆盖的行业曾报「✓ 有效 N 条」绿灯，被误读成「这行查过了」。
+
+        断言落在语义上不落在原句上——措辞改过一次，钉死原句只会让
+        下一次改写变成"改文案顺手改测试"。
+        """
         r = run(CHECK)
         self.assertEqual(r.returncode, 0)
-        self.assertIn("不是「你这行覆盖没覆盖」", r.stdout)
+        self.assertIn("覆盖没覆盖", r.stdout, "没说清楚它不回答覆盖范围")
         self.assertIn("规则库覆盖的范围", r.stdout)
+
+    def test_never_claims_the_rules_are_still_in_force(self):
+        """[严重·误导] 「✓ 有效 N 条」被读成「这些法规还生效」，而它只量拉取日期。
+
+        实测撞到了后果：规则库 E4 引的规章 2023 年就被废止，而这里
+        一直报绿——四次独立诊断全都指出了这一点。脚本没法知道一条
+        法规活着没有，那它就不能用"有效"这个词。
+        """
+        out = run(CHECK).stdout
+        import re
+        self.assertIsNone(re.search(r"[✓有]\s*效\s*\d+\s*条", out),
+                          f"又出现了「有效 N 条」这种说法：\n{out}")
+        self.assertIn("不说明那条法规还在生效", out, "没有把「新鲜」和「仍然有效」分开")
 
     def test_failure_modes_included_in_freshness_scan(self):
         """失败模式库也会过期 —— 反例失效、竞品收费了、法规变了都会让它失准。"""

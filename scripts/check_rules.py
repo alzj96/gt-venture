@@ -93,7 +93,10 @@ def scan(refs: Path, max_age: int) -> int:
     if fresh:
         newest = min(a for _, _, a in fresh)
         oldest = max(a for _, _, a in fresh)
-        print(f"✓ 有效 {len(fresh)} 条（{newest}–{oldest} 天前核对）")
+        print(f"📅 拉取日期在保质期内 {len(fresh)} 条（{newest}–{oldest} 天前抄的）")
+        print("   这只说明我们最近抄过它，不说明那条法规还在生效。")
+        print("   实测里一条 2023 年就被废止的规章在这里显示为绿——四次独立诊断都撞到了它。")
+        print("   要确认「还在不在」，只能去一手源看有没有被新文件废止或修订。")
 
     if not stale:
         print("（日期都在保质期内）")
@@ -106,13 +109,14 @@ def scan(refs: Path, max_age: int) -> int:
     # 读的人很容易把「日期新鲜」当成「这行查过了」。
     print()
     print("━" * 52)
-    print("注意：上面回答的是「规则新不新」，不是「你这行覆盖没覆盖」。")
+    print("注意：上面回答的只有一件事——「这条我们多久没抄过了」。")
+    print("它不回答「这条法规还在不在」，也不回答「你这行覆盖没覆盖」。")
     print("规则库覆盖的范围：")
     for path in files:
         head = path.read_text(encoding="utf-8").split("\n", 1)[0].lstrip("# ").strip()
         print(f"  · {path.name} —— {head}")
     print("用户的业务不在覆盖范围内时，正确做法是明说不知道并给出查询链接，")
-    print("不要因为这里显示「有效」就以为可以下结论。")
+    print("也不要因为日期是绿的就以为那条法规还有效——那是两件事。")
     print("━" * 52)
 
     return 0

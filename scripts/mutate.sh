@@ -113,6 +113,18 @@ mutate "pattern 与 archive 口径一致（中·天天误报）" scripts/pattern
   '                if _is_archive(p)]' \
   '                if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]'
 
+mutate "不把「新鲜」说成「有效」（严重·误导）" scripts/check_rules.py \
+  'print(f"📅 拉取日期在保质期内 {len(fresh)} 条（{newest}–{oldest} 天前抄的）")' \
+  'print(f"✓ 有效 {len(fresh)} 条（{newest}–{oldest} 天前核对）")'
+
+mutate "追问说不方便不回退已答（严重·进度倒退）" scripts/archive.py \
+  '        if m and _has_real_answer(m.group(1)):' \
+  '        if m and m.group(1).strip() and UNANSWERED not in m.group(1):'
+
+mutate "「未答」二字出现在答案里不算标记（中）" scripts/archive.py \
+  '        if t.startswith(UNANSWERED):' \
+  '        if UNANSWERED in t:'
+
 mutate "邻居文件不被当成项目（严重·静默失败·踩过两次）" scripts/archive.py \
   'def is_archive(doc: dict) -> bool:
     return bool(_ARCHIVE_NAME.search(doc["path"].stem)) or doc["has_project_key"]' \
