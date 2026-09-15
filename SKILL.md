@@ -73,6 +73,7 @@ description: 创业项目诊断——在动手之前把项目问清楚，指出�
 | 用户提到自己或合伙人在体制内 | [references/rules-personal-eligibility.md](references/rules-personal-eligibility.md) —— **优先级最高，随时触发** |
 | 六问答完，查失败模式 | [references/failure-modes.md](references/failure-modes.md) |
 | 六问答完，要查闸门 | [references/rules-personal-eligibility.md](references/rules-personal-eligibility.md) 然后 [references/rules-miniprogram-categories.md](references/rules-miniprogram-categories.md) |
+| 业务里有充值/会员卡/次卡/年卡/存杯/预售，任何**先收钱后兑付**的形态 | [references/rules-prepaid.md](references/rules-prepaid.md) —— **随时触发，用户往往已经在违规状态里** |
 | 闸门查完，动笔之前 | [references/premise-check.md](references/premise-check.md) —— **一轮，把结论踩的前提摆出来让他推翻** |
 | 准备写报告 | [references/report-format.md](references/report-format.md) |
 | 报告出完，要问资源对接 | [references/resource-matching.md](references/resource-matching.md) |
@@ -387,7 +388,17 @@ python3 <技能目录>/scripts/archive.py --workspace "$(pwd)" save --project "<
 
 ## 第 2 步：中国闸门检查
 
-**两组都要查，顺序不能反。**
+**两组必查，顺序不能反**（2a 主体资格 → 2b 类目资质），**外加一组按触发查**（预付式消费）。
+
+### 先看会不会触发预付式消费
+
+用户的业务里只要出现**充值、储值、会员卡、次卡、年卡/月卡、存杯、买十送一、押金、预售**，或者任何**先收钱、之后分次兑付**的形态，就读 [预付式消费](references/rules-prepaid.md)。
+
+**这一组和其余两组有个重要差别：用户往往已经在违规状态里**，不是"将来要办什么证"。2024 年 7 月 1 日起，收预付款必须与消费者订立书面合同，而绝大多数小店老板不知道这件事。
+
+所以说法也不一样——不是"你需要准备什么"，是"**你现在这件事得补上，而且今晚就能补**"。
+
+**别用罚款金额开场。** 那个文件里写了为什么：吓住一个开店的人，他会关掉对话，不会去补合同。
 
 ### 2a. 先查主体资格
 

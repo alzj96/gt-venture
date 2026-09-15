@@ -109,6 +109,20 @@ mutate "off 档不写文件（严重·承诺落空）" scripts/resources.py \
   '    if False:
         # 用户在同意门上读到的原话是「不留任何痕迹」'
 
+mutate "pattern 与 archive 口径一致（中·天天误报）" scripts/pattern.py \
+  '                if _is_archive(p)]' \
+  '                if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]'
+
+mutate "邻居文件不被当成项目（严重·静默失败·踩过两次）" scripts/archive.py \
+  'def is_archive(doc: dict) -> bool:
+    return bool(_ARCHIVE_NAME.search(doc["path"].stem)) or doc["has_project_key"]' \
+  'def is_archive(doc: dict) -> bool:
+    return doc["path"].name not in {"资源.md", "模式.md"}'
+
+mutate "手工档案不被正面判定关在门外（严重·丢档案）" scripts/archive.py \
+  'return bool(_ARCHIVE_NAME.search(doc["path"].stem)) or doc["has_project_key"]' \
+  'return bool(_ARCHIVE_NAME.search(doc["path"].stem))'
+
 mutate "slug 冲突不覆盖别人的档案（严重·丢数据）" scripts/archive.py \
   '    if cleaned != project.strip():' \
   '    if False:'
@@ -162,9 +176,12 @@ mutate "强项排在毛病前面（顺序决定他要不要接着聊）" scripts
     atexit.register(_print_signals)
     _multi_owner_warning()'
 
-mutate "强项.md 不算成一个项目（find 同款 bug）" scripts/pattern.py \
-  'if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]' \
-  'if p.name not in {PATTERN_FILE, SENSITIVE_FILE}]'
+# 这条和上一条是同一个坑的两个历史状态：上一条回滚到「第二轮之前的黑名单」
+# （漏 SIGNAL_FILE），这一条回滚到「第二轮当时的黑名单」（漏 资源.md）。
+# 两条都得红，否则说明测试只盯住了其中一个漏法。
+mutate "强项.md 不算成一个项目（第二轮前的漏法）" scripts/pattern.py \
+  '                if _is_archive(p)]' \
+  '                if p.name not in {PATTERN_FILE, SENSITIVE_FILE}]'
 
 mutate "筛查与半途诊断可区分（体验）" scripts/archive.py \
   '        elif d["mode"] == "筛查":' \

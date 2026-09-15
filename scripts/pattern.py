@@ -288,6 +288,32 @@ def cmd_sensitive(args) -> int:
     return 0
 
 
+# 和 archive.py 的 is_archive 必须是同一条规则。
+#
+# 这里原先也是一张黑名单（PATTERN_FILE / SENSITIVE_FILE / SIGNAL_FILE），
+# 它漏了 `资源.md`，于是只有一个项目的工作空间会被报成「有 2 个项目」，
+# 然后劝用户换目录 —— 一条只在多客户场景才该出现的警告，对单用户天天响。
+#
+# 黑名单在两个脚本里各存一份，必然各自漂移，所以两边都改成正面判定：
+# 文件名是 `<项目>-诊断-YYYYMMDD.md`，或 frontmatter 里有「项目」键。
+# 有一条测试跑真实命令比对两个脚本的口径，漂了会红。
+_ARCHIVE_NAME = re.compile(r"-诊断-\d{8}$")
+
+
+def _is_archive(path: Path) -> bool:
+    if _ARCHIVE_NAME.search(path.stem):
+        return True
+    try:
+        head = path.read_text(encoding="utf-8")[:512]
+    except OSError:
+        return False
+    if not head.startswith("---"):
+        return False
+    parts = head.split("---", 2)
+    return len(parts) >= 3 and any(
+        line.strip().startswith("项目:") for line in parts[1].splitlines())
+
+
 def _multi_owner_warning() -> None:
     """同一工作空间有多个项目档案时，提醒确认是不是同一个人。
 
@@ -299,7 +325,7 @@ def _multi_owner_warning() -> None:
     if not root.is_dir():
         return
     projects = [p.stem.split("-诊断-")[0] for p in root.glob("*.md")
-                if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]
+                if _is_archive(p)]
     if len(set(projects)) >= 2:
         print(f"ℹ️  这个工作空间里有 {len(set(projects))} 个项目的档案。")
         print("   下面的模式和敏感问题是「关于这个人」的，不是关于项目的。")

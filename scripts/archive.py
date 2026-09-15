@@ -108,6 +108,8 @@ def parse(path: Path) -> dict:
     done, next_q = progress(body)
     return {
         "path": path,
+        # find_all 用它做正面判定：手工写的档案文件名可能不规范，但有这个键。
+        "has_project_key": "项目" in meta,
         "project": meta.get("项目", path.stem),
         "created": meta.get("创建", ""),
         "updated": meta.get("更新", ""),
@@ -119,9 +121,24 @@ def parse(path: Path) -> dict:
     }
 
 
-# 同目录下的邻居文件，不是诊断档案。漏掉排除会让 find 报出
-# 「资源 进行中 已答 0/6」这种假项目，下次开场就会问用户要不要接着聊「资源」。
-_NOT_ARCHIVES = {"资源.md", "模式.md"}
+# 同目录下的邻居文件不是诊断档案。漏掉会让 find 报出
+# 「资源 进行中 已答 0/6」这种假项目，下次开场就去续问一个不存在的项目 ——
+# 这正是 SKILL.md 自称最该避免的那种静默失败。
+#
+# 这里曾经是一张黑名单 `{"资源.md", "模式.md"}`，**它漂移过两次**：
+# 后来加的 `敏感问题.md` 和 `强项.md` 都没人记得回来补一行。
+# 黑名单和写文件的那几个脚本分居两处，必然漂移，所以改成正面判定。
+#
+# 认两样，满足一样就是档案：
+#   · 文件名是 `<项目>-诊断-YYYYMMDD.md` —— 脚本写出来的都长这样
+#   · frontmatter 里有「项目」字段 —— 手工写的档案，文件名可能不规范
+# 邻居文件两样都不满足：模式/强项/敏感问题没有 frontmatter，
+# 资源.md 有 frontmatter 但键是「对接.<项目>」，没有「项目」。
+_ARCHIVE_NAME = re.compile(r"-诊断-\d{8}$")
+
+
+def is_archive(doc: dict) -> bool:
+    return bool(_ARCHIVE_NAME.search(doc["path"].stem)) or doc["has_project_key"]
 
 
 def find_all() -> list:
@@ -129,7 +146,7 @@ def find_all() -> list:
     if not root.is_dir():
         return []
     return sorted(
-        (parse(p) for p in root.glob("*.md") if p.name not in _NOT_ARCHIVES),
+        (d for d in (parse(p) for p in root.glob("*.md")) if is_archive(d)),
         key=lambda d: d["updated"],
         reverse=True,
     )

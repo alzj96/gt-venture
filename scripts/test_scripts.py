@@ -50,6 +50,50 @@ class Base(unittest.TestCase):
 
 class TestArchive(Base):
 
+    def test_no_neighbour_file_is_ever_listed_as_a_project(self):
+        """[严重·静默失败] find 曾把邻居文件报成「敏感问题 进行中 已答 0/6」。
+
+        这个坑踩过两次：排除名单原先只有 资源.md / 模式.md，后来加的
+        敏感问题.md 和 强项.md 都没人记得回来补一行。名单和写文件的脚本
+        分居两处，必然漂移。
+
+        所以这条测试**不写文件名**——它把会产出邻居文件的命令全跑一遍，
+        再断言 find 只看得见真项目。以后再加邻居文件，这条自动覆盖。
+        """
+        run(ARCHIVE, "save", "--project", "真项目", "--step", "1",
+            "--answer", "真的", ws=self.ws)
+        run(PATTERN, "log", "--kind", "跟风", "--note", "x", ws=self.ws)
+        run(PATTERN, "signal", "--kind", "砍得动", "--note", "x", ws=self.ws)
+        run(PATTERN, "sensitive", "--step", "6", ws=self.ws)
+        run(RESOURCES, "consent", "--project", "真项目", "--level", "anon", ws=self.ws)
+        run(RESOURCES, "add", "--project", "真项目", "--side", "have",
+            "--type", "渠道", "--detail", "两位家长", ws=self.ws)
+
+        produced = {p.name for p in (self.ws / "创业档案").glob("*.md")}
+        self.assertGreater(len(produced), 2, f"邻居文件没生成出来，这条测试是空的：{produced}")
+
+        out = run(ARCHIVE, "find", ws=self.ws).stdout
+        self.assertIn("找到 1 份档案", out, f"除了真项目还列出了别的：\n{out}")
+        for name in produced:
+            if "-诊断-" in name:
+                continue
+            self.assertNotIn(name[:-3], out, f"邻居文件 {name} 被当成项目列出来了")
+
+    def test_handwritten_archive_with_odd_filename_still_found(self):
+        """正面判定不能把手工档案关在门外——那比多列一个假项目更糟。
+
+        archive-format.md 明说脚本跑不了时可以手工读写。手工写的文件名
+        可能不带 `-诊断-YYYYMMDD`，但按文档一定有 frontmatter 的「项目」键。
+        """
+        d = self.ws / "创业档案"
+        d.mkdir(parents=True)
+        (d / "随手起的名字.md").write_text(
+            "---\n项目: 手工项目\n创建: 2026-09-01\n更新: 2026-09-01\n"
+            "状态: 进行中\n已答: 1\n---\n\n## 第1问\n\n手工写的答案\n",
+            encoding="utf-8")
+        out = run(ARCHIVE, "find", ws=self.ws).stdout
+        self.assertIn("手工项目", out, f"手工档案被漏掉了：\n{out}")
+
     def test_project_name_is_exact_key(self):
         """[严重] 子串回退曾让「宠物寄养小程序」静默覆盖「宠物寄养」的答案。"""
         run(ARCHIVE, "save", "--project", "宠物寄养", "--step", "1",
@@ -562,6 +606,36 @@ class TestSignals(Base):
     一个人来第三次时开场白就是一份罪状清单——而这个技能的存亡标准
     是他会不会来第四次。
     """
+
+    def test_pattern_and_archive_agree_on_what_counts_as_a_project(self):
+        """[中·天天误报] 两个脚本各存一份「哪些不是档案」，必然各自漂移。
+
+        pattern.py 那份漏了 `资源.md`：只有一个项目的工作空间被报成
+        「有 2 个项目」，然后劝用户换目录——一条只该在多客户场景出现的
+        警告，对单用户天天响。archive.py 那份漏了 `敏感问题.md` 和 `强项.md`。
+
+        这条测试不写文件名，跑真实命令比对两个脚本的口径。
+        """
+        run(ARCHIVE, "save", "--project", "只有一个", "--step", "1",
+            "--answer", "x", ws=self.ws)
+        run(RESOURCES, "consent", "--project", "只有一个", "--level", "anon", ws=self.ws)
+        run(RESOURCES, "add", "--project", "只有一个", "--side", "have",
+            "--type", "渠道", "--detail", "两位家长", ws=self.ws)
+        run(PATTERN, "log", "--kind", "跟风", "--note", "x", ws=self.ws)
+        run(PATTERN, "signal", "--kind", "砍得动", "--note", "x", ws=self.ws)
+        run(PATTERN, "sensitive", "--step", "6", ws=self.ws)
+
+        self.assertIn("找到 1 份档案", run(ARCHIVE, "find", ws=self.ws).stdout)
+        self.assertNotIn("会串", run(PATTERN, "show", ws=self.ws).stdout,
+                         "只有一个项目却报了多主体串档警告")
+
+    def test_multi_owner_warning_still_fires_for_real_second_project(self):
+        """修完误报不能顺手把真警告也关掉——这条是隐私相关的。"""
+        for name in ("客户A", "客户B"):
+            run(ARCHIVE, "save", "--project", name, "--step", "1",
+                "--answer", "x", ws=self.ws)
+        run(PATTERN, "log", "--kind", "跟风", "--note", "x", ws=self.ws)
+        self.assertIn("会串", run(PATTERN, "show", ws=self.ws).stdout)
 
     def test_signal_writes_its_own_file(self):
         """强项和模式不共用文件，两边互不覆盖。
