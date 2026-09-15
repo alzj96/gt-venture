@@ -10,7 +10,7 @@
 
 ### 装
 
-1. 下载 `startup-diagnosis.zip`
+1. 下载 `gt-venture.zip`
 2. 打开 WorkBuddy → 技能 → **添加技能** → **上传技能**
 3. 把 zip 拖进去，或点「选择文件」
 
@@ -49,7 +49,7 @@
 ```bash
 mkdir -p ~/.claude/skills
 cd ~/.claude/skills
-git clone https://github.com/<owner>/startup-diagnosis.git
+git clone https://github.com/alzj96/gt-venture.git
 ```
 
 或者放进项目里的 `.claude/skills/`。

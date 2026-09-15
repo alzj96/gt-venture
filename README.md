@@ -1,10 +1,12 @@
-# 创业诊断 · startup-diagnosis
+# gt-venture · 创业诊断
 
 面向中国创业者的项目诊断技能。在动手之前把项目问清楚，指出在中国做这件事要过哪几道闸，把结论存档以便下次接着聊。
 
 **主要写给第一次做这件事的人**——学生、刚毕业、想做个副业、有个想法但不知道从哪儿开始验证的。它会区分"没有资源"和"没有优势"，不会把前者当成后者。
 
 跑在 **WorkBuddy**、**豆包**、**Claude Code** 上，同一套 `SKILL.md`，不用改。
+
+**名字的来历**：`gt` = Ground Truth，来自长文《基准真相：当比特撞上原子》。机器学习里 ground truth 是那份用来对照的真值——**没有它，任何"准确率"都是自说自话**，这正是这个技能的铁律。它是那篇文章里能落到一次具体对话上的那一部分，`venture` 是它落的地方；同一个词根下还会有别的 `gt-*`。
 
 安装见 [INSTALL.md](INSTALL.md)。**它站在什么立场上，见 [ETHOS.md](ETHOS.md)**——四条信念，每条都带"什么能推翻它"。诊断不是中立的，同一个项目换一套信念就是另一个结论，所以信念先摆出来，你不同意哪条就知道该打哪份报告的折扣。
 
@@ -19,6 +21,9 @@
 | 适用 | **卖自己的时间和手艺**（接单、外包、周末摆摊） | 有个项目想法，先看有没有硬伤 | 有个项目想法，要结论 |
 | 做什么 | 四问 | 三项一票否决检查 | 六问 + 失败模式 + 两组闸门 + 前提确认 + 对抗评审 + 报告 |
 | 轮次 | 6-8 | 4-6 | 15+ |
+| 产出 | 报告 | 报告 | 报告 |
+
+**三种模式都出报告**，而且都会额外导出一份单文件 HTML（[看一份示例](assets/sample-report.html)）——样式内联、不连外网，可以直接发给合伙人看。报告正文照样发进对话，HTML 是附加的。
 
 分不清就问一句：**你是想接活赚钱，还是想做一个东西卖给很多人？**
 
@@ -84,7 +89,7 @@ references/
   rules-miniprogram-categories.md 微信类目与资质 + 教育 APP 备案
   rules-prepaid.md        预付式消费：收预付款必须签书面合同（不挑行业）
   ai-era.md               项目里有 AI 时：量你和基础模型的距离、可托付税、写不进文字的才是资产
-  report-format.md        报告结构
+  report-format.md        三份报告骨架：全面诊断 / 副业体检 / 轻量筛查
   resource-matching.md    资源对接与同意门
   archive-format.md       档案格式（脚本跑不了时手工对照）
 scripts/
@@ -92,7 +97,8 @@ scripts/
   check_rules.py          规则保质期检查（新鲜度 ≠ 覆盖范围）
   resources.py            资源档案、同意门三档、脱敏
   pattern.py              跨项目模式、正向信号、敏感问题、退役
-  test_scripts.py         71 条回归测试
+  report_html.py          把报告导成单文件 HTML（样式内联、不连外网、能转发）
+  test_scripts.py         80 条回归测试
   mutate.sh               变异测试：回滚每个修复，确认测试抓得住
 evals/                    9 条 eval + fixture
 docs/                     方法论
@@ -138,7 +144,7 @@ docs/                     方法论
 ## 开发
 
 ```bash
-python3 scripts/test_scripts.py   # 71 条回归，每条对应一个真实发生过的 bug
+python3 scripts/test_scripts.py   # 80 条回归，每条对应一个真实发生过的 bug
 bash scripts/mutate.sh            # 变异测试：回滚每个修复，确认测试真的抓得住
 ```
 

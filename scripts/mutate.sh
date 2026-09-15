@@ -113,6 +113,32 @@ mutate "pattern 与 archive 口径一致（中·天天误报）" scripts/pattern
   '                if _is_archive(p)]' \
   '                if p.name not in {PATTERN_FILE, SENSITIVE_FILE, SIGNAL_FILE}]'
 
+# —— report_html.py：它的失败方式是"安静地产出一份坏文件，而那份文件
+#    已经被转发出去了"，所以每一条都得有测试钉着。
+mutate "报告 HTML 零外部请求（严重·转发即失效）" scripts/report_html.py \
+  'CSS = """' \
+  'CSS = """@import url("https://fonts.googleapis.com/css2?family=X");'
+
+mutate "报告 HTML 转义内容（严重·结构被撑坏）" scripts/report_html.py \
+  '    t = html.escape(t, quote=False)' \
+  '    pass'
+
+mutate "有序列表不从 1 重来（中·两个「1.」）" scripts/report_html.py \
+  'and start != 1 else' \
+  'and False else'
+
+mutate "表格渲染得出来（严重·丢整节）" scripts/report_html.py \
+  '    head, body = cells[0], cells[2:]' \
+  '    return ""'
+
+mutate "还原档案里被降级的标题（严重·整份没有大标题）" scripts/report_html.py \
+  '    return re.sub(r"^##(#{1,4})(?= )", r"\1", body, flags=re.MULTILINE)' \
+  '    return body'
+
+mutate "没报告时拒绝导出（中·空壳文件被转发）" scripts/report_html.py \
+  '    if not report:' \
+  '    if False:'
+
 mutate "不把「新鲜」说成「有效」（严重·误导）" scripts/check_rules.py \
   'print(f"📅 拉取日期在保质期内 {len(fresh)} 条（{newest}–{oldest} 天前抄的）")' \
   'print(f"✓ 有效 {len(fresh)} 条（{newest}–{oldest} 天前核对）")'

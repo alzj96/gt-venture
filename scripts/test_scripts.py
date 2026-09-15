@@ -24,6 +24,7 @@ ARCHIVE = SCRIPTS / "archive.py"
 RESOURCES = SCRIPTS / "resources.py"
 PATTERN = SCRIPTS / "pattern.py"
 CHECK = SCRIPTS / "check_rules.py"
+REPORT_HTML = SCRIPTS / "report_html.py"
 
 
 def run(script: Path, *args, ws: Path = None):
@@ -758,6 +759,114 @@ class TestSignals(Base):
         body = (d / "强项.md").read_text(encoding="utf-8")
         self.assertIn("别删我", body)
         self.assertIn("新记录", body)
+
+
+
+class TestReportHtml(Base):
+    """导出一份能转发的 HTML。
+
+    它的失败方式和别的脚本不一样：**错了不会报错，会安静地产出一份
+    看起来还行、但缺了一节或者打不开的文件**——而那份文件已经被转发
+    给合伙人了。所以这一组测的全是"安静地坏掉"。
+    """
+
+    REPORT = """# 诊断：某项目
+
+日期：2026-09-16　｜　已答：6/6 问
+
+## 一句话
+你要做的是一个**社区团购小程序**。
+
+## 最硬的三个问题
+1. 第一条
+- 子项 A
+- 子项 B
+2. 第二条
+
+## 中国闸门
+| 约束 | 出处 |
+| --- | --- |
+| 食品经营许可证 | 《食品安全法》 |
+
+## 下一步
+今晚做一件事。
+"""
+
+    def _make(self, project="某项目", report=None):
+        run(ARCHIVE, "save", "--project", project, "--step", "1",
+            "--answer", "答案", ws=self.ws)
+        f = self.ws / "_rep.md"
+        f.write_text(report if report is not None else self.REPORT, encoding="utf-8")
+        run(ARCHIVE, "report", "--project", project, "--file", str(f), ws=self.ws)
+        r = run(REPORT_HTML, "--project", project, ws=self.ws)
+        hits = list((self.ws / "创业档案").glob("*.html"))
+        return r, (hits[0].read_text(encoding="utf-8") if hits else "")
+
+    def test_no_external_requests_at_all(self):
+        """[严重·转发即失效] 引一个 CDN 或字体，断网/微信内置浏览器里就是裸文本。
+
+        这份文件的唯一用途是被转发，而转发之后它落在什么网络环境里
+        我们完全不知道。所以样式必须内联，且不许有任何外部资源。
+        """
+        _, h = self._make()
+        for bad in ["<link ", "<script ", "src=", "@import", "//cdn", "fonts.googleapis"]:
+            self.assertNotIn(bad, h, f"HTML 里出现了外部资源：{bad}")
+
+    def test_escapes_html_in_report_content(self):
+        """[严重] 报告里出现 < > & 时，不能把页面结构撑坏。
+
+        用户原话里带尖括号不是稀奇事（「我想做个 <万能助手>」）。
+        """
+        _, h = self._make(report="# 标题\n\n用户说：<script>alert(1)</script> 还有 a & b\n")
+        self.assertNotIn("<script>alert", h, "内容里的标签没被转义")
+        self.assertIn("&lt;script&gt;", h)
+        self.assertIn("a &amp; b", h)
+
+    def test_ordered_list_keeps_its_numbering(self):
+        """[中·一份报告里出现两个「1.」] 有序项之间夹了子弹列表，ol 被截断后从 1 重来。
+
+        报告格式里「最硬的三个问题」正是这个形状：1. 下面挂几条 -，然后 2.。
+        实测第一版就撞上了，截图里两条都是「1.」。
+        """
+        _, h = self._make()
+        self.assertIn('<ol start="2">', h, "第二个有序项没有接着上一个的编号")
+
+    def test_table_survives(self):
+        """[严重·丢整节] 「中国闸门」那一节是表格，渲染不出来等于这节没了。"""
+        _, h = self._make()
+        self.assertIn("<table>", h)
+        self.assertIn("食品经营许可证", h)
+        self.assertIn("<th>", h)
+
+    def test_unknown_syntax_degrades_instead_of_crashing(self):
+        """报告出不来，比排版难看严重得多。认不出的语法按段落原样输出。"""
+        weird = "# 标题\n\n| 这不是表格\n\n![图](x.png)\n\n~~~\n块\n~~~\n"
+        r, h = self._make(report=weird)
+        self.assertEqual(r.returncode, 0, f"认不出的语法把脚本搞崩了：{r.stderr}")
+        self.assertIn("这不是表格", h, "认不出的内容被吞掉了")
+
+    def test_undemotes_headings_from_the_archive(self):
+        """档案把报告标题降了两级存。不还原的话整份报告没有 h1/h2，全是小标题。"""
+        _, h = self._make()
+        self.assertIn("<h1>诊断：某项目</h1>", h)
+        self.assertIn("<h2>中国闸门</h2>", h)
+
+    def test_refuses_when_there_is_no_report_yet(self):
+        """[中] 没报告就导出，会产出一个空壳文件发给合伙人。要拒绝，不要产出。"""
+        run(ARCHIVE, "save", "--project", "还没写", "--step", "1",
+            "--answer", "x", ws=self.ws)
+        r = run(REPORT_HTML, "--project", "还没写", ws=self.ws)
+        self.assertEqual(r.returncode, 2)
+        self.assertFalse(list((self.ws / "创业档案").glob("*.html")), "被拒的导出留下了文件")
+
+    def test_refuses_when_project_not_found(self):
+        r = run(REPORT_HTML, "--project", "查无此项目", ws=self.ws)
+        self.assertEqual(r.returncode, 1)
+
+    def test_tells_the_caller_to_still_post_the_markdown(self):
+        """宿主不一定让用户拿得到文件，所以正文照样要发——这句提醒不能掉。"""
+        r, _ = self._make()
+        self.assertIn("正文照样要发", r.stdout)
 
 
 class TestCheckRules(unittest.TestCase):
