@@ -139,6 +139,26 @@ mutate "没报告时拒绝导出（中·空壳文件被转发）" scripts/report
   '    if not report:' \
   '    if False:'
 
+mutate "对接卡：我有为空不出卡（严重·network 门槛失守）" scripts/resources.py \
+  '    if not entry["have"]:' \
+  '    if False:'
+
+mutate "对接卡：anon 不带联系方式（严重·隐私）" scripts/resources.py \
+  '    if level == "anon" and args.contact:' \
+  '    if False:'
+
+mutate "对接卡：条目里的联系方式不分档位都拦（严重·替别人暴露）" scripts/resources.py \
+  '    contacts = sorted({h for t in texts for h in sniff_contact(t)})' \
+  '    contacts = []'
+
+mutate "页脚 network 那句只给有东西可换的人（中·指进不去的门）" scripts/report_html.py \
+  '    return bool(have and re.search(r"^- 类型:", have.group(1), re.MULTILINE))' \
+  '    return True'
+
+mutate "改成 off 要删掉已经存过的资源（严重·不留痕没兑现）" scripts/resources.py \
+  '        new_body, n = section.subn("", body)' \
+  '        new_body, n = body, 0'
+
 mutate "跳过的问把补存命令递出去（中·下次重问）" scripts/archive.py \
   '        gaps = _unanswered_before(body, step, mode)' \
   '        gaps = []'

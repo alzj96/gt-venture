@@ -177,6 +177,7 @@ th{background:#faf9f7;font-weight:650}
  width:5px;height:5px;border-radius:50%;background:var(--accent)}
 .toc a{position:relative}
 
+.foot .net{margin:10px 0 0}
 .foot{margin-top:52px;padding-top:16px;border-top:1px solid var(--rule);
  font-family:var(--sans);color:var(--muted);font-size:12.5px;line-height:1.75}
 
@@ -615,6 +616,35 @@ def find_archive(ws, project: str) -> Path:
     return None
 
 
+def has_resources(ws, project: str) -> bool:
+    """这个项目的「我有」是不是不空，而且没选 off。
+
+    GT network 的门槛就是手上有能拿出来换的东西。页脚那句只给过门槛的人看——
+    「我有」空着的人属于还在学怎么想的那一拨，给他看一句「加入 network」，
+    是在指一扇他进不去的门。直接读资源档案，不 import resources.py：
+    这个脚本要能单独拷走用。
+    """
+    f = archive_root(ws) / "资源.md"
+    if not f.is_file():
+        return False
+    text = f.read_text(encoding="utf-8")
+    if re.search(rf"^对接\.{re.escape(project)}:\s*off\s*$", text, re.MULTILINE):
+        return False
+    sec = re.search(rf"^## {re.escape(project)}\s*\n(.*?)(?=^## |\Z)", text,
+                    re.MULTILINE | re.DOTALL)
+    if not sec:
+        return False
+    have = re.search(r"^### 我有\s*\n(.*?)(?=^###? |\Z)", sec.group(1),
+                     re.MULTILINE | re.DOTALL)
+    return bool(have and re.search(r"^- 类型:", have.group(1), re.MULTILINE))
+
+
+# 放名字不放链接：报告会被转发，落在谁手里、在哪个平台打开都不知道，
+# 带链接的东西在抖音、微信里都可能被判成引流。
+NETWORK_LINE = ("<strong>GT network</strong>：手上有资源或技能想交换的创业者，"
+                "用 gt-venture 跑完诊断、生成对接卡加入。")
+
+
 def extract_report(text: str) -> str:
     """取出 `## 报告` 到文件末尾，并把 demote 过的标题还原两级。"""
     m = re.search(r"^## 报告\s*\n(.*)\Z", text, re.MULTILINE | re.DOTALL)
@@ -624,7 +654,8 @@ def extract_report(text: str) -> str:
     return re.sub(r"^##(#{1,4})(?= )", r"\1", body, flags=re.MULTILINE)
 
 
-def render(title: str, report_md: str, project: str, mode: str = "诊断") -> str:
+def render(title: str, report_md: str, project: str, mode: str = "诊断",
+           network: bool = False) -> str:
     verdict, gates, answered, rest = parse_overview(report_md)
 
     # H1 和紧随其后的日期行从正文里摘出来单独排，剩下的走通用渲染
@@ -671,6 +702,7 @@ def render(title: str, report_md: str, project: str, mode: str = "诊断") -> st
 {body}
 <div class="foot">
 由 <strong>gt-venture · {kind}</strong> 生成。{foot}
+{f'<p class="net">{NETWORK_LINE}</p>' if network else ''}
 </div>
 </main>
 </div>
@@ -712,7 +744,8 @@ def main() -> int:
 
     out = args.out or src.with_suffix(".html")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(title, report, args.project, mode), encoding="utf-8")
+    network = has_resources(ws, args.project)
+    out.write_text(render(title, report, args.project, mode, network), encoding="utf-8")
     print(f"报告已导出：{out}")
     print("这是一个单文件 HTML，可以直接发给别人，断网也能打开。")
     print("⚠️  正文照样要发进对话——宿主不一定让用户拿得到生成的文件。")

@@ -69,6 +69,8 @@ class TestArchive(Base):
         run(RESOURCES, "consent", "--project", "真项目", "--level", "anon", ws=self.ws)
         run(RESOURCES, "add", "--project", "真项目", "--side", "have",
             "--type", "渠道", "--detail", "两位家长", ws=self.ws)
+        run(RESOURCES, "card", "--project", "真项目", ws=self.ws)
+        self.assertTrue(list((self.ws / "创业档案").glob("对接卡-*")), "对接卡没生成，这条测试漏覆盖了它")
 
         produced = {p.name for p in (self.ws / "创业档案").glob("*.md")}
         self.assertGreater(len(produced), 2, f"邻居文件没生成出来，这条测试是空的：{produced}")
@@ -566,6 +568,162 @@ class TestWorkBuddyRunGuards(Base):
         f.write_text("# 诊断：喂猫\n\n## 一句话\n\n给出门几天的猫主人找人上门喂猫。\n", encoding="utf-8")
         r = run(ARCHIVE, "report", "--project", "喂猫", "--file", str(f), ws=self.ws)
         self.assertNotIn("禁语", r.stdout)
+
+
+class TestNetworkCard(Base):
+    """GT network 对接卡。
+
+    network 只做资源和技能的交换，门槛是「我有」里有具体的东西。
+    卡由用户自己复制发出去，脚本不上传——所以这张卡上写什么，
+    就是交到陌生人手上的全部东西，每一条守卫都要钉死。
+    """
+
+    def _seed(self, level="anon", have=True, project="上门喂猫"):
+        run(RESOURCES, "consent", "--project", project, "--level", level, ws=self.ws)
+        if have:
+            run(RESOURCES, "add", "--project", project, "--side", "have", "--type", "技术",
+                "--detail", "会写小程序，做过两个上线的", ws=self.ws)
+        run(RESOURCES, "add", "--project", project, "--side", "need", "--type", "产能",
+            "--detail", "上门喂猫的人，一个都没有", ws=self.ws)
+        return project
+
+    def test_no_card_when_nothing_to_trade(self):
+        """[严重·门槛失守] 「我有」是空的，不出卡。
+
+        GT network 只做交换。一样都没有能换的人属于还在学怎么想的那一拨——
+        放进去，他会变成懂行那拨人的客户池（代办、外包、卖课）。
+        """
+        p = self._seed(have=False)
+        r = run(RESOURCES, "card", "--project", p, ws=self.ws)
+        self.assertEqual(r.returncode, 3)
+        self.assertIn("我有", r.stderr)
+        self.assertFalse(list((self.ws / "创业档案").glob("对接卡-*")), "门槛没过还是出了卡")
+
+    def test_no_card_without_consent_or_when_off(self):
+        run(RESOURCES, "add", "--project", "没问过", "--side", "have", "--type", "技术",
+            "--detail", "x", ws=self.ws)
+        self.assertEqual(run(RESOURCES, "card", "--project", "没问过", ws=self.ws).returncode, 2)
+        run(RESOURCES, "consent", "--project", "关掉", "--level", "off", ws=self.ws)
+        self.assertEqual(run(RESOURCES, "card", "--project", "关掉", ws=self.ws).returncode, 2)
+
+    def test_anon_card_never_carries_contact(self):
+        """[严重·隐私] anon 档承诺过不带联系方式，由 GT 居中、双方同意才交换。"""
+        p = self._seed(level="anon")
+        r = run(RESOURCES, "card", "--project", p, "--contact", "wx_zhou2024", ws=self.ws)
+        self.assertEqual(r.returncode, 2, "anon 档接受了联系方式")
+        r = run(RESOURCES, "card", "--project", p, ws=self.ws)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("不公开", r.stdout)
+        self.assertIn("会写小程序", r.stdout)
+        self.assertIn("上门喂猫的人", r.stdout)
+
+    def test_full_card_carries_the_users_own_contact(self):
+        p = self._seed(level="full")
+        r = run(RESOURCES, "card", "--project", p, "--contact", "wx_zhou2024", ws=self.ws)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("wx_zhou2024", r.stdout)
+
+    def test_third_party_contact_blocked_on_card_even_in_full(self):
+        """[严重·替别人暴露] 存档时 full 档对第三方联系方式只出声不拦。
+
+        分不清是不是用户本人，拦了会误伤。但出卡是交给陌生人——这一步必须真拦，
+        不分档位。「豆豆妈妈的微信」不能因为用户选了 full 就被发出去。
+        """
+        p = self._seed(level="full")
+        # 这句故意不带人名：带了「豆豆妈妈」会先撞上人名检测，
+        # 联系方式这道守卫就没被测到（变异台抓出来的）
+        run(RESOURCES, "add", "--project", p, "--side", "have", "--type", "客户",
+            "--detail", "有个做宠物店的熟人，微信 cat_shop_cd", ws=self.ws)
+        r = run(RESOURCES, "card", "--project", p, "--deidentified", ws=self.ws)
+        self.assertEqual(r.returncode, 2, "卡上带出了第三方的微信号")
+        self.assertNotIn("cat_shop_cd", r.stdout)
+
+    def test_named_entity_pauses_card_in_any_tier(self):
+        p = self._seed(level="full")
+        run(RESOURCES, "add", "--project", p, "--side", "have", "--type", "渠道",
+            "--detail", "实验二小三年级五班家长群", ws=self.ws)
+        r = run(RESOURCES, "card", "--project", p, ws=self.ws)
+        self.assertEqual(r.returncode, 2, "full 档卡上带出了具名机构，没有暂停")
+        r = run(RESOURCES, "card", "--project", p, "--deidentified", ws=self.ws)
+        self.assertEqual(r.returncode, 0, "确认脱敏之后还是出不了卡")
+
+    def test_card_code_and_filename_never_contain_project_name(self):
+        """[中·项目名常带人名] 「王姐优选」这种名字，编号和文件名里都不能出现。"""
+        p = self._seed(project="王姐优选")
+        r = run(RESOURCES, "card", "--project", p, ws=self.ws)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("王姐", r.stdout.split("已存")[0], "卡面上出现了项目名")
+        names = [f.name for f in (self.ws / "创业档案").glob("对接卡-*")]
+        self.assertTrue(names)
+        self.assertFalse(any("王姐" in n for n in names), f"文件名带出了项目名：{names}")
+
+    def test_card_says_so_when_join_channel_is_not_set(self):
+        """加入方式没定之前不编一个——技能是公开的，编出来的微信号全世界都看得到。"""
+        p = self._seed()
+        r = run(RESOURCES, "card", "--project", p, ws=self.ws)
+        self.assertIn("内测", r.stdout)
+
+    def test_report_footer_invites_to_network_only_when_there_is_something_to_trade(self):
+        """[中·指一扇进不去的门] 页脚那句 GT network 只给「我有」不空的人看。"""
+        rep = self.ws / "_r.md"
+        rep.write_text("# 诊断：喂猫\n\n## 一句话\n\n给出门的猫主人找人上门。\n", encoding="utf-8")
+        run(ARCHIVE, "save", "--project", "喂猫", "--step", "1", "--answer", "x", ws=self.ws)
+        run(ARCHIVE, "report", "--project", "喂猫", "--file", str(rep), ws=self.ws)
+
+        run(REPORT_HTML, "--project", "喂猫", ws=self.ws)
+        html = next((self.ws / "创业档案").glob("*.html")).read_text(encoding="utf-8")
+        self.assertNotIn("GT network", html, "「我有」是空的，页脚还在邀请进 network")
+
+        self._seed(project="喂猫")
+        run(REPORT_HTML, "--project", "喂猫", ws=self.ws)
+        html = next((self.ws / "创业档案").glob("*.html")).read_text(encoding="utf-8")
+        self.assertIn("GT network", html, "「我有」不空，页脚没有 network 那句")
+        self.assertNotIn("http", html.split("GT network")[1][:200], "network 那句带了链接")
+
+    def test_switching_to_off_erases_what_was_already_stored(self):
+        """[严重·隐私·「不留痕」没兑现] 先 anon 存了几条，后来改成 off。
+
+        原来只删了档位那一行，整段资源还在文件里，屏幕上却打着「不写任何文件」。
+        档位一删，match 还把它当成没选过，照样拿去配对。
+        """
+        p = self._seed(level="anon")
+        run(RESOURCES, "consent", "--project", "另一个", "--level", "anon", ws=self.ws)
+        run(RESOURCES, "add", "--project", "另一个", "--side", "have", "--type", "产能",
+            "--detail", "有两个人能上门", ws=self.ws)
+        run(RESOURCES, "consent", "--project", p, "--level", "off", ws=self.ws)
+        text = (self.ws / "创业档案" / "资源.md").read_text(encoding="utf-8")
+        self.assertNotIn("会写小程序", text, "改成 off 之后，之前存的资源还留在文件里")
+        self.assertNotIn(f"## {p}", text)
+        self.assertIn("有两个人能上门", text, "删过头了，把别的项目也删了")
+        out = run(RESOURCES, "match", ws=self.ws).stdout
+        self.assertNotIn("上门喂猫的人", out, "off 的项目还在参与配对")
+
+    def test_report_footer_silent_when_only_needs_are_recorded(self):
+        """「我缺」写了、「我有」一条没有——资源文件在，项目段也在，只是没东西可换。
+
+        上一条测试的「空」是连资源文件都没有，函数第一行就返回了，
+        真正判断「我有」空不空的那一行没被测到（变异台抓出来的）。
+        """
+        rep = self.ws / "_r.md"
+        rep.write_text("# 诊断：喂猫\n\n## 一句话\n\nx\n", encoding="utf-8")
+        run(ARCHIVE, "save", "--project", "喂猫", "--step", "1", "--answer", "x", ws=self.ws)
+        run(ARCHIVE, "report", "--project", "喂猫", "--file", str(rep), ws=self.ws)
+        self._seed(project="喂猫", have=False)
+        self.assertIn("## 喂猫", (self.ws / "创业档案" / "资源.md").read_text(encoding="utf-8"))
+        run(REPORT_HTML, "--project", "喂猫", ws=self.ws)
+        html = next((self.ws / "创业档案").glob("*.html")).read_text(encoding="utf-8")
+        self.assertNotIn("GT network", html, "只有「我缺」没有「我有」，页脚还在邀请进 network")
+
+    def test_report_footer_respects_off(self):
+        rep = self.ws / "_r.md"
+        rep.write_text("# 诊断：喂猫\n\n## 一句话\n\nx\n", encoding="utf-8")
+        run(ARCHIVE, "save", "--project", "喂猫", "--step", "1", "--answer", "x", ws=self.ws)
+        run(ARCHIVE, "report", "--project", "喂猫", "--file", str(rep), ws=self.ws)
+        self._seed(project="喂猫")
+        run(RESOURCES, "consent", "--project", "喂猫", "--level", "off", ws=self.ws)
+        run(REPORT_HTML, "--project", "喂猫", ws=self.ws)
+        html = next((self.ws / "创业档案").glob("*.html")).read_text(encoding="utf-8")
+        self.assertNotIn("GT network", html, "用户选了 off，页脚还在邀请")
 
 
 class TestResources(Base):

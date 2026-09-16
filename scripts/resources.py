@@ -207,10 +207,16 @@ def cmd_consent(args) -> int:
         # 代价：下次会重新问一次。这个代价该由产品承担，不该由用户承担。
         existing, body = read_doc()
         key = f"对接.{args.project}"
-        if key in existing:
-            existing.pop(key)
-            write_doc(existing, body)
-            print(f"已清除 {args.project} 的对接记录。")
+        # 只删档位那一行是不够的：之前在 anon / full 下存过的整段资源还留在
+        # 文件里，屏幕上却打着「不写任何文件」。而且档位一删，match 判断
+        # 「不是 off」时把它当成了没选过——一个说了不留痕的项目照样参与配对。
+        section = re.compile(rf"^## {re.escape(args.project)}\s*\n.*?(?=^## |\Z)",
+                             re.MULTILINE | re.DOTALL)
+        new_body, n = section.subn("", body)
+        if key in existing or n:
+            existing.pop(key, None)
+            write_doc(existing, new_body)
+            print(f"已清除 {args.project} 的档位" + ("和已经存过的整段资源。" if n else "。"))
         print(f"已记录：{args.project} → off（不存）")
         print("不写任何文件——用户选的是「不留任何痕迹」。")
         print("代价是下次会重新问一次同意门，这个代价该产品承担。")
@@ -328,6 +334,111 @@ def parse_entries(body: str) -> dict:
     return out
 
 
+# GT network 的加入方式。**没定之前留空**——技能是公开的，这里填什么
+# 全世界都看得到，不能替作者编一个微信号或群。空着的时候卡上照实说「还在内测」。
+JOIN = ""
+
+
+def _card_code(project: str) -> str:
+    """编号不能带项目名：「王姐优选」这种名字里本身就有人。
+
+    按项目名哈希出四位，同一个项目每次生成的编号一样，撮合表里好去重。
+    去掉 0/O/1/I 这几个念出来分不清的。"""
+    import hashlib
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    h = int(hashlib.sha1(project.encode("utf-8")).hexdigest(), 16)
+    out = ""
+    for _ in range(4):
+        h, r = divmod(h, len(alphabet))
+        out += alphabet[r]
+    return out
+
+
+def cmd_card(args) -> int:
+    """生成 GT network 对接卡。
+
+    **卡由用户自己复制发出去，脚本不联网上传。** 理由三条：宿主沙箱不一定让
+    脚本联网；「技能偷偷往外发数据」一旦被发现，可信度就没了；回访还没验证
+    之前不建服务端。同意是看得见的——用户自己按的复制。
+
+    **「我有」为空就不出卡。** GT network 的门槛是手上有能拿出来换的资源或
+    技能，「我有」是空的人属于还在学怎么想的那一拨，不进 network。
+
+    **第三方信息永远不上卡，不管哪一档。** 存档时 full 档对疑似第三方只出声
+    不拦（分不清是不是用户本人），但出卡是把东西交给陌生人——这一步必须真拦。
+    """
+    meta, body = read_doc()
+    level = consent_of(meta, args.project)
+    if not level:
+        print("拒绝生成：这个项目还没有记录同意档位，先走资源对接的同意门。", file=sys.stderr)
+        return 2
+    if level == "off":
+        print(f"拒绝生成：{args.project} 的档位是 off，用户说了不存，也就不出卡。", file=sys.stderr)
+        return 2
+
+    entry = parse_entries(body).get(args.project, {"have": [], "need": []})
+    if not entry["have"]:
+        print(f"不出卡：「{args.project}」的「我有」是空的。", file=sys.stderr)
+        print("GT network 的门槛是手上有能拿出来换的资源或技能——一样都没有的话，", file=sys.stderr)
+        print("先不进 network。这不是评价，是这个网络只做交换：没有能换的，进去也配不上。", file=sys.stderr)
+        return 3
+
+    if level == "anon" and args.contact:
+        print("拒绝生成：anon 档的卡不带联系方式，由 GT 居中撮合、双方同意才交换。", file=sys.stderr)
+        print("要留联系方式，先把这个项目的档位改成 full。", file=sys.stderr)
+        return 2
+
+    texts = [d for _t, d in entry["have"] + entry["need"]]
+    if args.label:
+        texts.append(args.label)
+    if args.city:
+        texts.append(args.city)
+    contacts = sorted({h for t in texts for h in sniff_contact(t)})
+    if contacts:
+        print(f"拒绝生成：卡上的条目里有 {'、'.join(contacts)}。", file=sys.stderr)
+        print("联系方式只能写在 --contact 里（而且只有 full 档可以），条目里一律不留。", file=sys.stderr)
+        print("用 resources.py show 找到那一条，改写之后再出卡。", file=sys.stderr)
+        return 2
+    named = sorted({n for t in texts for n in sniff_named(t)})
+    if named and not args.deidentified:
+        print(f"暂停：卡上可能含 {'、'.join(named)}。", file=sys.stderr)
+        print("这张卡是要交给陌生人的——不管哪一档，第三方的身份都不能上卡。", file=sys.stderr)
+        print("改写成「一位家长」「一个 800 人的业主群」这种，确认之后加 --deidentified 重跑。", file=sys.stderr)
+        return 2
+
+    code = _card_code(args.project)
+    title = f"{args.label}-{code}" if args.label else code
+    lines = [f"GT network 对接卡 · {title}", "─" * 24]
+    head = "　　".join(x for x in (f"城市：{args.city}" if args.city else "",
+                                   f"阶段：{args.stage}" if args.stage else "") if x)
+    if head:
+        lines.append(head)
+    for side, label in (("have", "我有"), ("need", "我缺")):
+        items = entry[side]
+        if not items:
+            lines.append(f"{label}：（没写）")
+            continue
+        for i, (t, d) in enumerate(items):
+            lines.append(f"{label}：{t}｜{d}" if i == 0 else f"　　　{t}｜{d}")
+    lines.append("─" * 24)
+    if level == "full" and args.contact:
+        lines.append(f"联系：{args.contact}")
+    else:
+        lines.append("联系：不公开，由 GT 居中撮合，双方都同意才交换")
+    lines.append(f"加入：{JOIN}" if JOIN else "加入：GT network 还在内测，这张卡先存着")
+    card = "\n".join(lines) + "\n"
+
+    out = resource_path().parent / f"对接卡-{code}.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(card, encoding="utf-8")
+    print(card)
+    print(f"已存：{out}")
+    print("这张卡由用户自己复制发出去，脚本不上传任何东西。")
+    if level == "full" and args.contact:
+        print("⚠️  联系方式确认是用户本人的——不能替别人留。")
+    return 0
+
+
 def cmd_show(_args) -> int:
     p = resource_path()
     if not p.is_file():
@@ -390,6 +501,15 @@ def main() -> int:
     p_a.add_argument("--deidentified", action="store_true",
                      help="anon 档：确认这条已经脱敏（或身份信息告警是误报）")
 
+    p_k = sub.add_parser("card", help="生成 GT network 对接卡（「我有」为空不出卡）")
+    p_k.add_argument("--project", required=True)
+    p_k.add_argument("--label", default="", help="类别标签，比如「上门喂猫」。不要带人名、店名")
+    p_k.add_argument("--city", default="")
+    p_k.add_argument("--stage", default="", help="还没做出东西 / 做出来没人用 / 有人用没人付钱 / 已经有人付钱")
+    p_k.add_argument("--contact", default="", help="只有 full 档可以填，而且必须是用户本人的")
+    p_k.add_argument("--deidentified", action="store_true",
+                     help="确认卡上的条目已经脱敏（或身份信息告警是误报）")
+
     sub.add_parser("show", help="打印资源档案")
     sub.add_parser("match", help="在已有项目之间做本地匹配")
 
@@ -400,7 +520,7 @@ def main() -> int:
     global _WORKSPACE
     _WORKSPACE = args.workspace.resolve() if args.workspace else None
     return {"consent": cmd_consent, "add": cmd_add,
-            "show": cmd_show, "match": cmd_match}[args.cmd](args)
+            "card": cmd_card, "show": cmd_show, "match": cmd_match}[args.cmd](args)
 
 
 if __name__ == "__main__":
