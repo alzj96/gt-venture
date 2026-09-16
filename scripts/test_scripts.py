@@ -376,6 +376,26 @@ class TestArchive(Base):
         self.assertNotEqual(r.returncode, 0)
 
 
+class TestSkillManifest(unittest.TestCase):
+    """SKILL.md 的 frontmatter 和正文要对得上。"""
+
+    def test_every_tool_the_body_tells_you_to_call_is_in_allowed_tools(self):
+        """[严重·真机上不弹] 正文让模型调 AskUserQuestion，许可名单里却没有它。
+
+        第一次在桌面版真会话里验证选项：三个变量都控住了（句子不表态、
+        目录干净、ARGUMENTS 干净），还是没弹。对着 gstack 的 office-hours
+        一比，差在 frontmatter——它的 allowed-tools 里有 AskUserQuestion，
+        我们的没有。**和 MODE_STEPS 是同一种病：写了，没接线。**
+        """
+        text = (Path(__file__).resolve().parent.parent / "SKILL.md").read_text(encoding="utf-8")
+        head = text.split("---", 2)[1]
+        declared = {l.strip()[2:].strip() for l in head.splitlines() if l.strip().startswith("- ")}
+        for tool in ("AskUserQuestion", "WebSearch", "WebFetch", "Agent"):
+            if f"`{tool}`" in text or f"调用 {tool}" in text or tool in text.split("---", 2)[2]:
+                self.assertIn(tool, declared,
+                              f"正文要用 {tool}，frontmatter 的 allowed-tools 里没有它")
+
+
 class TestModes(Base):
     """副业体检和轻量筛查这两条路，第一次真跑出来的东西。
 

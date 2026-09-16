@@ -169,6 +169,10 @@ mutate "点目录条目要收抽屉（严重·点了像没反应）" scripts/rep
   "    if(e.target.closest('a')) closeToc();" \
   "    if(false) closeToc();"
 
+mutate "正文要用的工具必须在许可名单里（严重·真机上不弹）" SKILL.md \
+  '  - AskUserQuestion' \
+  '  - Glob'
+
 mutate "术语卡开着时按钮让位（中·压在解释上）" scripts/report_html.py \
   "    document.body.classList.add('term-open');" \
   "    void 0;"
