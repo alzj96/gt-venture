@@ -7,9 +7,11 @@ references/report-format.md 第一句）。而一段 markdown 贴在聊天框里
 
 **三条设计约束，每条都有理由：**
 
-1. **单文件、零外部依赖。** 样式内联，不引 CDN、不引字体、不带 JS。
+1. **单文件、零外部依赖。** 样式和脚本都内联，不引 CDN、不引字体。
    转发出去的文件会在断网的手机上、在微信内置浏览器里、在打印预览里
    被打开——任何一个外部请求都可能让它变成裸文本。
+   内联的那点 JS 只做增强（目录高亮、术语卡、锚点跳转）：**关掉 JS
+   这份报告照样从头读到尾**，一个字都不少。
 2. **从档案生成，不从对话生成。** 唯一真相是 `创业档案/` 里那份档案，
    所以这个脚本随时可以重跑，也能给几个月前的旧档案补一份 HTML。
 3. **它是附加的，不是唯一的。** 宿主可能不让用户拿到生成的文件（这一点
@@ -29,53 +31,375 @@ references/report-format.md 第一句）。而一段 markdown 贴在聊天框里
 
 import argparse
 import datetime as _dt
-import html
+import html as _html
 import re
 import sys
 from pathlib import Path
+
+
+def html_escape(t: str) -> str:
+    """模块名 html 被 apply_glossary/build_toc 的参数名占了，统一走这个。"""
+    return _html.escape(t, quote=False)
+
 
 ARCHIVE_DIR = "创业档案"
 SKIP_FILES = {"模式.md", "强项.md", "敏感问题.md", "资源.md"}
 
 CSS = """
-:root{--ink:#1a1a1a;--dim:#5b5b5b;--line:#e3e3e3;--bg:#fff;--accent:#8a5a2b;--mark:#fff7e8}
+/* 排印语言借自一篇长文的网页版：serif 正文、sans 标题、章节上边线、
+   左侧目录脊。状态色取自 dataviz 的固定状态盘，且**永远配图标和文字**
+   —— 颜色不单独承载意义（色觉障碍、打印、强制高对比下都要读得出）。 */
+:root{
+ --serif:Georgia,"Songti SC","Source Han Serif SC","Noto Serif CJK SC",serif;
+ --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+ --maxw:708px; --toc-w:212px;
+ --ink:#1a1a1a; --soft:#3a3a3a; --muted:#86868b; --bg:#fff; --rule:#e7e7e7;
+ --accent:#0066cc; --mark:#fffaf0;
+ --good:#0ca30c; --warn:#fab219; --serious:#ec835a; --crit:#d03b3b;
+}
 *{box-sizing:border-box}
-body{margin:0;background:#f6f5f3;color:var(--ink);
- font:16px/1.75 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
- -webkit-text-size-adjust:100%}
-.page{max-width:720px;margin:0 auto;background:var(--bg);padding:40px 28px 56px}
-h1{font-size:26px;line-height:1.35;margin:0 0 6px;letter-spacing:-.01em}
-h2{font-size:19px;margin:38px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
-h2:first-of-type{border-top:0;padding-top:0}
-h3{font-size:16px;margin:24px 0 8px}
-h4{font-size:15px;margin:18px 0 6px;color:var(--dim)}
-p{margin:0 0 14px}
-ul,ol{margin:0 0 14px;padding-left:1.4em}
-li{margin:0 0 7px}
-li>ul,li>ol{margin-top:7px}
-strong{font-weight:600}
-code{background:#f2f1ee;padding:.12em .38em;border-radius:3px;font-size:.9em;
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);
+ font-size:17px;line-height:1.85;-webkit-font-smoothing:antialiased;
+ text-rendering:optimizeLegibility;-webkit-text-size-adjust:100%}
+.layout{display:flex;gap:40px;justify-content:center;padding:44px 24px 80px}
+.doc{max-width:var(--maxw);width:100%;min-width:0}
+
+/* ── 顶栏 ── */
+.eyebrow{font-family:var(--sans);font-size:12px;letter-spacing:.08em;
+ color:var(--muted);margin:0 0 10px}
+h1{font-family:var(--sans);font-size:31px;font-weight:760;line-height:1.28;
+ letter-spacing:-.01em;margin:0 0 8px}
+.sub{font-family:var(--sans);font-size:13.5px;color:var(--muted);margin:0 0 26px}
+
+/* ── 概览：结论 + 四道闸 ── */
+.verdict{font-family:var(--sans);font-size:20px;font-weight:700;line-height:1.5;
+ margin:0 0 18px;padding:16px 20px;background:var(--mark);
+ border-left:3px solid var(--accent);border-radius:0 4px 4px 0}
+.gates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 8px}
+.gate{font-family:var(--sans);border:1px solid var(--rule);border-radius:6px;
+ padding:11px 12px;min-width:0}
+.gate .g-n{font-size:12px;color:var(--muted);letter-spacing:.04em}
+.gate .g-s{font-size:14.5px;font-weight:650;margin-top:3px;display:flex;
+ align-items:center;gap:5px;line-height:1.3}
+.g-i{flex:none;width:14px;height:14px}
+.gate.ok{border-color:rgba(12,163,12,.34)} .gate.ok .g-s{color:var(--good)}
+.gate.bad{border-color:rgba(208,59,59,.34)} .gate.bad .g-s{color:var(--crit)}
+.gate.unknown{border-color:rgba(250,178,25,.5)} .gate.unknown .g-s{color:#9a6a00}
+.gate.na .g-s{color:var(--muted)}
+.gates-note{font-family:var(--sans);font-size:12px;color:var(--muted);margin:0 0 30px}
+
+/* ── 标题栏：上边线 + 大留白，章节切割靠它 ── */
+h2 a.anchor{color:inherit;text-decoration:none}
+h2 a.anchor:hover::after{content:"#";color:var(--muted);font-weight:400;
+ font-size:.66em;margin-left:.34em;vertical-align:.12em}
+h2{font-family:var(--sans);font-size:23px;font-weight:750;line-height:1.35;
+ margin:54px 0 6px;padding-top:26px;border-top:1px solid var(--rule);
+ scroll-margin-top:20px}
+h3{font-family:var(--sans);font-size:17.5px;font-weight:700;margin:32px 0 4px}
+h4{font-family:var(--sans);font-size:15.5px;font-weight:650;color:var(--soft);margin:22px 0 4px}
+p{margin:0 0 15px}
+ul,ol{margin:0 0 15px;padding-left:1.35em}
+li{margin:0 0 8px}
+li>ul,li>ol{margin-top:8px}
+strong{font-weight:700}
+em{font-style:italic;color:var(--soft)}
+code{background:#f3f3f1;padding:.1em .38em;border-radius:3px;font-size:.88em;
  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-a{color:var(--accent)}
-blockquote{margin:0 0 14px;padding:10px 16px;background:var(--mark);
- border-left:3px solid var(--accent);color:#4a3a22}
+a{color:var(--accent);text-underline-offset:2px}
+blockquote{margin:0 0 15px;padding:12px 18px;background:#fafaf8;
+ border-left:3px solid var(--rule);color:var(--soft)}
 blockquote p:last-child{margin-bottom:0}
-hr{border:0;border-top:1px solid var(--line);margin:30px 0}
-.meta{color:var(--dim);font-size:14px;margin:0 0 26px}
+hr{border:0;border-top:1px solid var(--rule);margin:28px 0}
 .tablewrap{overflow-x:auto;margin:0 0 16px}
-table{border-collapse:collapse;width:100%;font-size:14.5px}
-th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
-th{background:#faf9f7;font-weight:600}
-.foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);
- color:var(--dim);font-size:13px;line-height:1.7}
-@media(max-width:560px){.page{padding:26px 18px 40px}h1{font-size:22px}body{font-size:15.5px}}
-@media print{body{background:#fff}.page{max-width:none;padding:0}}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:13.5px;line-height:1.6}
+th,td{border:1px solid var(--rule);padding:9px 11px;text-align:left;vertical-align:top}
+th{background:#faf9f7;font-weight:650}
+
+/* ── 术语卡：复刻自那篇长文的实现 ──
+   桌面 hover 走 CSS，**点击/触屏走 JS —— 手机没有 hover，必须能点**。
+   第一版我只做了 hover，等于术语卡在手机上完全没用，而报告最常
+   被打开的地方就是手机。卡片用 --dx 做视口边缘避让，贴底时翻到上方。 */
+.term{position:relative;border-bottom:1px dashed rgba(0,102,204,.5);cursor:pointer;
+ transition:border-color .15s,background .15s}
+.term:hover,.term.open{background:rgba(0,102,204,.07);border-bottom-color:var(--accent)}
+.term:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+.term-card{position:absolute;left:0;bottom:calc(100% + 9px);
+ transform:translateX(var(--dx,0px));width:min(330px,76vw);
+ background:var(--ink);color:#fff;font-family:var(--sans);font-size:12.5px;
+ line-height:1.68;font-weight:400;text-align:left;padding:11px 13px;border-radius:7px;
+ opacity:0;visibility:hidden;transition:opacity .16s;z-index:30;cursor:text;
+ box-shadow:0 8px 28px rgba(0,0,0,.2)}
+.term-card.up{bottom:auto;top:calc(100% + 9px)}
+.term:hover .term-card,.term.open .term-card{opacity:1;visibility:visible}
+@media(max-width:700px){
+ /* 手机上不做边缘避让，直接贴着正文宽度铺开，点一下出、再点收 */
+ .term-card{position:fixed;left:12px;right:12px;bottom:14px;top:auto;width:auto;
+  transform:none;font-size:13.5px;padding:14px 16px;box-shadow:0 -6px 30px rgba(0,0,0,.22)}
+ .term:hover .term-card{opacity:0;visibility:hidden}
+ .term.open .term-card{opacity:1;visibility:visible}
+}
+
+/* ── 下一步：可勾的清单 ── */
+.todo{list-style:none;padding:0;margin:0 0 16px}
+.todo li{display:flex;gap:11px;align-items:flex-start;padding:11px 13px;
+ border:1px solid var(--rule);border-radius:6px;margin-bottom:8px;
+ font-family:var(--sans);font-size:14.5px;line-height:1.65}
+.todo input{margin:5px 0 0;flex:none;width:15px;height:15px;accent-color:var(--accent)}
+.todo li:has(input:checked){color:var(--muted);background:#fafaf8}
+.todo li:has(input:checked) .t-x{text-decoration:line-through}
+
+/* ── 目录脊 ── */
+.toc{position:sticky;top:44px;width:var(--toc-w);flex:none;align-self:flex-start;
+ border-left:1.5px solid var(--rule);padding-left:16px;font-family:var(--sans)}
+.toc-h{font-size:11.5px;letter-spacing:.07em;color:var(--muted);margin:0 0 10px}
+.toc a{display:block;color:#b9b9b9;text-decoration:none;font-size:12.5px;
+ padding:4px 0;line-height:1.5;transition:color .15s}
+.toc a:hover{color:var(--ink)}
+.toc a.on{color:var(--accent)}
+.toc a.on::before{content:"";position:absolute;left:-20px;margin-top:.55em;
+ width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.toc a{position:relative}
+
+.foot{margin-top:52px;padding-top:16px;border-top:1px solid var(--rule);
+ font-family:var(--sans);color:var(--muted);font-size:12.5px;line-height:1.75}
+
+/* 窄屏不是把目录藏起来，是换形态。
+   报告转发出去多半在手机或窄面板里打开——把导航藏掉，"分模块"这件事
+   就只在宽屏成立，而宽屏恰恰是最少见的那个场景。 */
+@media(max-width:940px){
+ .layout{display:block;padding:30px 18px 56px}
+ .doc{max-width:none}
+ .toc{position:static;width:auto;border-left:0;border-bottom:1px solid var(--rule);
+  padding:0 0 13px;margin:0 0 24px;display:flex;flex-wrap:wrap;gap:5px 14px;align-items:baseline}
+ .toc-h{width:100%;margin:0 0 3px}
+ .toc a{padding:0;color:var(--soft);font-size:13px}
+ .toc a.on{color:var(--accent);font-weight:650}
+ .toc a.on::before{display:none}
+}
+@media(max-width:560px){body{font-size:16px}h1{font-size:25px}h2{font-size:20px}
+ .gates{grid-template-columns:repeat(2,1fr)}.verdict{font-size:17px;padding:13px 15px}}
+@media print{.toc{display:none}.layout{padding:0}.term-card{display:none}
+ .h2 a.anchor::after{content:none}
+ .todo li{break-inside:avoid}}
 """
+
+
+
+# 目录高亮。**没有它页面照样能读**，所以不做任何兜底——
+# 这份文件的第一约束是"断网、微信内置浏览器、打印预览都能打开"，
+# 任何依赖 JS 才成立的信息都不该放进来。
+JS = """<script>
+(function(){
+  // ── 目录高亮：用 IntersectionObserver，rootMargin 下沿 -82%。
+  //    复刻自那篇长文——比监听 scroll 算 offsetTop 稳，
+  //    而且"当前在哪一节"的手感是那个 -82% 调出来的。
+  var links=[].slice.call(document.querySelectorAll('.toc a'));
+  var map={}; links.forEach(function(a){ map[a.getAttribute('href').slice(1)]=a; });
+  var heads=[].slice.call(document.querySelectorAll('h2[id]'));
+  if(links.length&&heads.length&&window.IntersectionObserver){
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting){
+          links.forEach(function(l){l.classList.remove('on');});
+          var a=map[e.target.id]; if(a){a.classList.add('on');}
+        }
+      });
+    },{rootMargin:'0px 0px -82% 0px',threshold:0});
+    heads.forEach(function(h){io.observe(h);});
+  }
+
+  // ── 点标题/点目录要真的跳过去。
+  //    直接开本地文件、或挂在网上时，href="#sN" 原生就能跳，所以本地一测就过。
+  //    但这份报告是拿来转发的：从微信、邮件附件、系统预览器打开时，页面地址常是
+  //    data: 或 blob:，浏览器会拦掉片段跳转——点了没反应。
+  //    所以自己 scrollIntoView，几种打开方式下行为一致。
+  document.addEventListener('click',function(e){
+    var a=e.target.closest('a[href^="#"]'); if(!a) return;
+    var id=a.getAttribute('href').slice(1); if(!id) return;
+    var el=document.getElementById(id); if(!el) return;
+    e.preventDefault();
+    el.scrollIntoView({behavior:'smooth',block:'start'});
+    if(history.replaceState) try{history.replaceState(null,'','#'+id);}catch(_){}
+  });
+
+  // ── 术语卡：桌面 hover 走 CSS，点击/触屏走这里（手机没有 hover，必须能点）
+  var openTerm=null, openAtY=0;
+  function narrow(){ return matchMedia('(max-width:700px)').matches; }
+  function place(t){
+    var c=t.querySelector('.term-card'); if(!c) return;
+    c.classList.remove('up'); c.style.setProperty('--dx','0px');
+    if(narrow()) return;
+    var r=c.getBoundingClientRect(), m=12, dx=0;
+    if(r.right>innerWidth-m) dx=innerWidth-m-r.right;
+    if(r.left+dx<m) dx=m-r.left;
+    c.style.setProperty('--dx',dx+'px');
+    if(r.bottom>innerHeight-m && t.getBoundingClientRect().top>r.height+m) c.classList.add('up');
+  }
+  function closeTerm(){ if(openTerm){ openTerm.classList.remove('open'); openTerm=null; } }
+  document.addEventListener('click',function(e){
+    if(e.target.closest('.term-card')) return;        // 卡片内可选中文字
+    var t=e.target.closest('.term');
+    if(!t){ closeTerm(); return; }
+    e.preventDefault();
+    if(t===openTerm){ closeTerm(); return; }
+    closeTerm(); place(t); t.classList.add('open'); openTerm=t; openAtY=scrollY;
+  });
+  document.addEventListener('mouseover',function(e){
+    var t=e.target.closest('.term'); if(t&&t!==openTerm&&!narrow()) place(t);
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape') closeTerm();
+    if((e.key==='Enter'||e.key===' ')&&document.activeElement&&
+       document.activeElement.classList.contains('term')){
+      e.preventDefault(); document.activeElement.click();
+    }
+  });
+  // 滚开一屏才收（小幅滚动是读者在看卡片本身，别抢在他前面关掉）
+  addEventListener('scroll',function(){
+    if(openTerm&&!narrow()&&Math.abs(scrollY-openAtY)>120) closeTerm();
+  },{passive:true});
+})();
+</script>"""
+
+
+# 报告里全是行话。第一次创业的人读到「类目资质」「最窄楔子」就卡住，
+# 而他恰恰是这份报告的目标读者。术语卡是首次出现时挂一个悬停解释——
+# 比任何图表都值钱，因为它解决的是"读不懂"，不是"看不清"。
+GLOSSARY = {
+    "主体资格": "这个人能不能做这件事——身份上的限制，比如在编教师、公务员。主体不合格时，证办得再全也没用。",
+    "类目资质": "平台（比如微信小程序）按业务类型要求的证照。选错类目，后面整段结论都是错的。",
+    "最窄的楔子": "砍到最小、但还有人要的那个版本。楔子窄，第一批用户才会满意而不是失望。",
+    "最窄楔子": "砍到最小、但还有人要的那个版本。楔子窄，第一批用户才会满意而不是失望。",
+    "预付式消费": "先收钱、之后分次兑付（充值、会员卡、次卡、存杯）。2024-07-01 起收预付款必须与消费者订立书面合同。",
+    "市场主体登记": "就是办营业执照。个体工商户也在《市场主体登记管理条例》的「市场主体」名单上。",
+    "四道闸": "任何行业都要过的四道：人（谁能做）、事（要不要许可）、地（哪个渠道）、钱（怎么收）。",
+    "可托付税": "把一件事交给 AI 且没人盯着也敢用，要额外付的成本 = 错误代价 × 漏检率 × 不可预测性。",
+    "失败模式": "杀死项目的机制，不是死掉的公司名单。每条都带「谁有这个病却活下来了、靠什么」。",
+    "对抗评审": "报告定稿前，找一个只看报告、不看对话的独立视角挑毛病——看了对话就会被推理过程带着走。",
+}
+
+GATE_ICON = {
+    # 状态永远是「图标 + 文字 + 颜色」三件套。少了前两件，色觉障碍、
+    # 打印和强制高对比模式下这一栏就变成了空白。
+    "ok": ('<svg class="g-i" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+           '<path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.1" '
+           'stroke-linecap="round" stroke-linejoin="round"/></svg>'),
+    "bad": ('<svg class="g-i" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+            '<path d="M8 4v5.2M8 12.2v.1" stroke="currentColor" stroke-width="2.1" '
+            'stroke-linecap="round"/><circle cx="8" cy="8" r="6.3" stroke="currentColor" '
+            'stroke-width="1.5"/></svg>'),
+    "unknown": ('<svg class="g-i" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+                '<circle cx="8" cy="8" r="6.3" stroke="currentColor" stroke-width="1.5" '
+                'stroke-dasharray="2.6 2.4"/><path d="M8 11.4v.1" stroke="currentColor" '
+                'stroke-width="2.1" stroke-linecap="round"/><path d="M6.2 6.2a1.8 1.8 0 113 1.4'
+                'c-.7.5-1.2.8-1.2 1.6" stroke="currentColor" stroke-width="1.6" '
+                'stroke-linecap="round"/></svg>'),
+    "na": ('<svg class="g-i" viewBox="0 0 16 16" fill="none" aria-hidden="true">'
+           '<path d="M4 8h8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>'
+           '</svg>'),
+}
+STATE = {"过": "ok", "有问题": "bad", "未查": "unknown", "不适用": "na"}
+
+
+def apply_glossary(html: str) -> str:
+    """只挂首次出现的那一个，而且只在文本节点里挂。
+
+    挂满全文会让正文变成一片虚线，读起来更累——术语卡是帮读者过第一道坎，
+    不是给每个词都配一本词典。
+
+    **实现上有个坑**：第一版用 `(?<![>\\w])` 想避开标签内部，但 Python 的
+    `\\w` 匹配中文，于是中文正文里几乎每一次出现都被挡掉，一个卡都没挂上。
+    正确做法是按标签切开，只在文本段里替换。
+    """
+    parts = re.split(r"(<[^>]+>)", html)
+    used = set()
+    skip = False
+    for k, seg in enumerate(parts):
+        if seg.startswith("<"):
+            low = seg.lower()
+            if low.startswith(("<style", "<script", "<title")):
+                skip = True
+            elif low.startswith(("</style", "</script", "</title")):
+                skip = False
+            continue
+        if skip or not seg.strip():
+            continue
+        for term, desc in GLOSSARY.items():
+            if term in used or term not in seg:
+                continue
+            card = (f'<span class="term" tabindex="0" role="button">{term}'
+                    f'<span class="term-card">{html_escape(desc)}</span></span>')
+            parts[k] = seg = seg.replace(term, card, 1)
+            used.add(term)
+    return "".join(parts)
+
+
+def parse_overview(md: str) -> tuple:
+    """抽出「## 概览」那三行，返回 (结论, 四道闸, 已答, 剩下的 markdown)。
+
+    格式对不上就整块当普通内容渲染——**报告出得来比画得好看重要**。
+    """
+    m = re.search(r"^## 概览\s*\n(.*?)(?=^## |\Z)", md, re.MULTILINE | re.DOTALL)
+    if not m:
+        return None, None, None, md
+    block = m.group(1)
+    verdict = gates = answered = None
+    for line in block.splitlines():
+        t = line.strip().lstrip("-*").strip()
+        if t.startswith("结论：") or t.startswith("结论:"):
+            verdict = t.split("：", 1)[-1].split(":", 1)[-1].strip()
+        elif t.startswith("闸门：") or t.startswith("闸门:"):
+            raw = t.split("：", 1)[-1].split(":", 1)[-1]
+            gates = []
+            for part in raw.split("/"):
+                if "=" in part:
+                    name, st = part.split("=", 1)
+                    gates.append((name.strip(), st.strip()))
+        elif t.startswith("已答：") or t.startswith("已答:"):
+            answered = t.split("：", 1)[-1].split(":", 1)[-1].strip()
+    if not verdict:
+        return None, None, None, md
+    return verdict, gates, answered, md[:m.start()] + md[m.end():]
+
+
+def render_overview(verdict: str, gates, answered) -> str:
+    out = [f'<p class="verdict">{_inline(verdict)}</p>']
+    if gates:
+        out.append('<div class="gates">')
+        for name, st in gates:
+            cls = STATE.get(st, "unknown")
+            out.append(f'<div class="gate {cls}"><div class="g-n">{html_escape(name)}</div>'
+                       f'<div class="g-s">{GATE_ICON[cls]}{html_escape(st)}</div></div>')
+        out.append("</div>")
+        if any(STATE.get(st) == "unknown" for _, st in gates):
+            out.append('<p class="gates-note">标「未查」的那几格是本报告没覆盖的，'
+                       '<strong>不等于没问题</strong>——正文里写了去哪儿查。</p>')
+        else:
+            out.append('<p class="gates-note">四道闸逐格都给了状态，一格都没省。</p>')
+    return "\n".join(out)
+
+
+def build_toc(html: str) -> tuple:
+    """给每个 h2 挂 id，生成左侧目录脊。"""
+    items = []
+
+    def tag(m):
+        n = len(items) + 1
+        text = re.sub(r"<[^>]+>", "", m.group(1))
+        items.append((f"s{n}", text))
+        return (f'<h2 id="s{n}"><a class="anchor" href="#s{n}">'
+                f'{m.group(1)}</a></h2>')
+
+    html = re.sub(r"<h2>(.*?)</h2>", tag, html, flags=re.DOTALL)
+    if len(items) < 3:
+        return html, ""
+    links = "".join(f'<a href="#{i}">{html_escape(t)}</a>' for i, t in items)
+    return html, f'<nav class="toc"><p class="toc-h">本报告</p>{links}</nav>'
 
 
 def _inline(t: str) -> str:
     """行内标记。**先转义再替换**，否则报告里的 < > & 会被当成标签。"""
-    t = html.escape(t, quote=False)
+    t = html_escape(t)
     t = re.sub(r"`([^`]+)`", r"<code>\1</code>", t)
     t = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)",
                r'<a href="\2" rel="noopener">\1</a>', t)
@@ -112,6 +436,15 @@ def md_to_html(md: str) -> str:
         nonlocal lst
         if lst:
             tag, items, start = lst
+            if tag == "todo":
+                # 「下一步」是这份报告里唯一要用户动手的一节，
+                # 做成能勾掉的清单，比一段话更容易真的被执行。
+                out.append('<ul class="todo">' + "".join(
+                    f'<li><input type="checkbox"{" checked" if c else ""}>'
+                    f'<span class="t-x">{_inline(x)}</span></li>' for c, x in items
+                ) + "</ul>")
+                lst = None
+                return
             # 有序列表要带 start：报告里「1. …」下面常挂一串 - 子项，
             # 子项会把 ol 截断，后面的「2. …」于是又从 1 开始——
             # 一份转发给合伙人的报告里出现两个「1.」，比排版难看严重。
@@ -170,6 +503,13 @@ def md_to_html(md: str) -> str:
             continue
         flush_quote()
 
+        m = re.match(r"^[-*+]\s+\[([ xX])\]\s+(.*)$", s)
+        if m:
+            flush_p()
+            if lst and lst[0] != "todo":
+                flush_list()
+            lst = ("todo", (lst[1] if lst else []) + [(m.group(1).lower() == "x", m.group(2))], 1)
+            continue
         m = re.match(r"^[-*+]\s+(.*)$", s)
         if m:
             flush_p()
@@ -223,25 +563,54 @@ def extract_report(text: str) -> str:
 
 
 def render(title: str, report_md: str, project: str) -> str:
-    body = md_to_html(report_md)
+    verdict, gates, answered, rest = parse_overview(report_md)
+
+    # H1 和紧随其后的日期行从正文里摘出来单独排，剩下的走通用渲染
+    head = ""
+    m = re.match(r"\s*#\s+(.+?)\n(?:\s*(日期[^\n]*)\n)?", rest)
+    if m:
+        head = m.group(2) or ""
+        rest = rest[m.end():]
+
+    body = md_to_html(rest)
+    body, toc = build_toc(body)
+    body = apply_glossary(body)
+
+    top = ""
+    if verdict:
+        top = render_overview(verdict, gates, answered)
+
+    # 报告的日期行常常自己就写了「已答 N/6」，概览块里也有一份——
+    # 两边都拼上去，副标题会出现两次已答。
+    bits = [head.strip()]
+    if answered and "已答" not in head:
+        bits.append(f"已答 {answered}")
+    sub = " ｜ ".join(x for x in bits if x)
     today = _dt.date.today().isoformat()
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(title)}</title>
+<title>{html_escape(title)}</title>
 <style>{CSS}</style>
 </head>
 <body>
-<div class="page">
-<p class="meta">gt-venture · 创业诊断　｜　{html.escape(project)}　｜　导出于 {today}</p>
+<div class="layout">
+{toc}
+<main class="doc">
+<p class="eyebrow">gt-venture · 创业诊断　|　{html_escape(project)}　|　导出于 {today}</p>
+<h1>{html_escape(title)}</h1>
+{f'<p class="sub">{_inline(sub)}</p>' if sub else ''}
+{top}
 {body}
 <div class="foot">
 由 <strong>gt-venture · 创业诊断</strong> 生成。正文里每个判断都配了「什么能推翻它」——
 <strong>你手上有它不知道的信息时，请推翻它。</strong>
 </div>
+</main>
 </div>
+{JS}
 </body>
 </html>
 """

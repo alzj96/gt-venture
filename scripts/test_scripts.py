@@ -809,7 +809,11 @@ class TestReportHtml(Base):
         我们完全不知道。所以样式必须内联，且不许有任何外部资源。
         """
         _, h = self._make()
-        for bad in ["<link ", "<script ", "src=", "@import", "//cdn", "fonts.googleapis"]:
+        # 测的是**外部资源**，不是"没有脚本"。内联 <style>/<script> 不发请求，
+        # 转发出去照样能开；第一版把 "<script " 一并禁了，靠标签没带空格
+        # 侥幸通过——那是钉错了不变量。
+        for bad in ["<link ", "<script src", "src=", "@import", "//cdn",
+                    "fonts.googleapis", "http://", "https://cdn"]:
             self.assertNotIn(bad, h, f"HTML 里出现了外部资源：{bad}")
 
     def test_escapes_html_in_report_content(self):
@@ -849,7 +853,150 @@ class TestReportHtml(Base):
         """档案把报告标题降了两级存。不还原的话整份报告没有 h1/h2，全是小标题。"""
         _, h = self._make()
         self.assertIn("<h1>诊断：某项目</h1>", h)
-        self.assertIn("<h2>中国闸门</h2>", h)
+        # h2 现在带 id（目录锚点要用），所以断言落在文本上不落在整个标签上
+        # 标题现在包了锚点（正文标题也能点着跳），断言落在文本和 id 上
+        self.assertRegex(h, r'<h2 id="s\d+"><a class="anchor" href="#s\d+">中国闸门</a></h2>')
+
+    OVERVIEW = """# 诊断：某项目
+
+日期：2026-09-16
+
+## 概览
+
+- 结论：改了再做
+- 闸门：人=过 / 事=未查 / 地=不适用 / 钱=有问题
+- 已答：6/6
+
+## 一句话
+一句话结论。
+
+## 下一步
+- [ ] 今晚翻合同
+- [x] 已经问过一个客户
+"""
+
+    def test_overview_becomes_a_status_row_not_a_bullet_list(self):
+        """[体验] 四道闸是这份报告最该一眼看完的东西，列表形态看不出哪格没过。"""
+        _, h = self._make(report=self.OVERVIEW)
+        self.assertIn('class="verdict"', h, "结论没有被提到顶部")
+        self.assertIn('class="gates"', h, "四道闸没画成状态条")
+        self.assertIn('class="gate unknown"', h, "「未查」没被标成未覆盖")
+        self.assertIn('class="gate bad"', h, "「有问题」没被标出来")
+
+    def test_status_never_relies_on_color_alone(self):
+        """[可达性] 色觉障碍、打印、强制高对比下，只靠颜色的状态等于空白。
+
+        dataviz 的硬规矩：状态色必须配图标和文字。
+        """
+        _, h = self._make(report=self.OVERVIEW)
+        self.assertIn("<svg", h, "状态没有配图标")
+        for word in ["过", "未查", "不适用", "有问题"]:
+            self.assertIn(f">{word}</div>", h.replace("</svg>", "</svg>"), f"状态文字「{word}」没渲染出来")
+
+    def test_unchecked_gate_says_it_is_not_the_same_as_fine(self):
+        """[严重·骗人] 「未查」被读成「没事」，是这份报告最容易误导人的地方。"""
+        _, h = self._make(report=self.OVERVIEW)
+        self.assertIn("不等于没问题", h)
+
+    def test_subtitle_does_not_repeat_the_answered_count(self):
+        """[排版] 日期行和概览块都带「已答」，两边都拼就出现两次。"""
+        _, h = self._make(report=self.OVERVIEW.replace(
+            "日期：2026-09-16", "日期：2026-09-16　｜　已答：6/6 问"))
+        sub = h.split('class="sub"')[1].split("</p>")[0]
+        self.assertEqual(sub.count("已答"), 1, f"副标题里已答出现了两次：{sub}")
+
+    def test_next_steps_render_as_a_checklist(self):
+        """「下一步」是唯一要用户动手的一节，做成能勾的才会被真执行。"""
+        _, h = self._make(report=self.OVERVIEW)
+        self.assertIn('class="todo"', h)
+        self.assertIn('<input type="checkbox">', h)
+        self.assertIn('<input type="checkbox" checked>', h)
+
+    def test_jargon_gets_a_hover_card_once(self):
+        """报告的读者是第一次创业的人，「类目资质」这种词读到就卡住。
+
+        只挂首次出现那一个——挂满全文会让正文变成一片虚线。
+        """
+        md = "# 标题\n\n先说类目资质这件事。\n\n再说一遍类目资质。\n"
+        _, h = self._make(report=md)
+        self.assertEqual(h.count('class="term"'), 1, "术语卡没有只挂首次出现")
+        self.assertIn('class="term-card"', h)
+
+    def test_term_card_works_without_hover(self):
+        """[严重·手机上完全没用] 第一版术语卡是纯 CSS hover 的。
+
+        而报告最常被打开的地方是手机，手机没有 hover——等于这个功能
+        在最主要的场景里不存在。和目录被 display:none 藏掉是同一类错：
+        只在宽屏成立。复刻自那篇长文的做法：桌面 hover 走 CSS，
+        点击/触屏走 JS。
+        """
+        md = "# 标题\n\n先说类目资质这件事。\n"
+        _, h = self._make(report=md)
+        self.assertIn("t.classList.add('open')", h.replace("\n", ""),
+                      "点击打不开术语卡")
+        self.assertIn(".term.open .term-card", h, "没有点击态样式")
+        self.assertIn('tabindex="0"', h, "键盘够不到术语卡")
+        self.assertIn("e.key==='Escape'", h.replace("\n", ""), "Esc 关不掉")
+
+    def test_anchor_jump_does_not_rely_on_native_fragment(self):
+        """[严重·转发出去就点不动] 点标题、点目录要真的跳过去。
+
+        href="#sN" 在 file:// 和 http:// 下原生就能跳，所以本地一测就过。
+        但这份报告是拿来转发的——从微信、邮件附件、预览器打开时地址常是
+        data: 或 blob:，浏览器拦掉片段跳转，点了没反应。实测就是这样发现的。
+        又是「只在一种打开方式下成立」那类错。
+        """
+        md = "# 标题\n\n## 一\n\nA\n\n## 二\n\nB\n\n## 三\n\nC\n"
+        _, h = self._make(report=md)
+        one = h.replace("\n", "")
+        self.assertIn('a[href^="#"]', one, "没有接管片段跳转")
+        self.assertIn("scrollIntoView", one, "没有自己滚过去")
+        self.assertIn("preventDefault", one, "没拦掉原生跳转，data: 下还是点不动")
+        self.assertIn('<h2 id="s1"', h, "标题没有 id，跳不过去")
+        self.assertIn('href="#s1"', h, "标题上没有可点的锚")
+
+    def test_term_card_does_not_close_on_small_scrolls(self):
+        """读者小幅滚动多半是在看卡片本身，抢在他前面关掉很烦。
+
+        长文那版留了 120px 的阈值，照抄。
+        """
+        _, h = self._make(report="# 标题\n\n说一下类目资质。\n")
+        self.assertIn("openAtY)>120", h.replace(" ", ""), "滚动就立刻收掉了卡片")
+
+    def test_headings_are_clickable_anchors(self):
+        """用户反馈「点击标题没有跳转」——正文标题本来就不是链接。"""
+        _, h = self._make(report=self.REPORT)
+        self.assertIn('<a class="anchor" href="#s', h)
+
+    def test_active_section_uses_intersection_observer(self):
+        """复刻长文的做法：IntersectionObserver + rootMargin 下沿 -82%。
+
+        比监听 scroll 算 offsetTop 稳，而「当前在哪一节」的手感就是
+        那个 -82% 调出来的。
+        """
+        _, h = self._make(report=self.REPORT)
+        self.assertIn("IntersectionObserver", h)
+        self.assertIn("-82%", h)
+
+    def test_toc_is_never_hidden_outright_on_narrow_screens(self):
+        """[严重·最常见场景下失效] 目录原来在 940px 以下 display:none。
+
+        而报告转发出去多半是在手机或窄面板里打开的——把导航藏掉，
+        「分模块」这件事就只在宽屏成立，宽屏恰恰是最少见的那个场景。
+        窄屏要换形态（横排），不是消失。
+        """
+        _, h = self._make(report=self.REPORT)
+        narrow = h[h.index("@media(max-width:940px)"):][:600]
+        self.assertNotIn("display:none", narrow.split("}")[0] + narrow.split(".toc{")[1][:200],
+                         "窄屏把目录整个藏了")
+        self.assertIn("flex-wrap:wrap", narrow, "窄屏没有给目录换成横排形态")
+
+    def test_toc_appears_only_when_there_is_enough_to_navigate(self):
+        """两节的报告不需要目录，加了只是噪音。"""
+        _, h = self._make(report="# 标题\n\n## 甲\n内容\n\n## 乙\n内容\n")
+        self.assertNotIn('class="toc"', h)
+        _, h2 = self._make(project="多节", report=self.REPORT)
+        self.assertIn('class="toc"', h2)
 
     def test_refuses_when_there_is_no_report_yet(self):
         """[中] 没报告就导出，会产出一个空壳文件发给合伙人。要拒绝，不要产出。"""

@@ -120,7 +120,7 @@ mutate "报告 HTML 零外部请求（严重·转发即失效）" scripts/report
   'CSS = """@import url("https://fonts.googleapis.com/css2?family=X");'
 
 mutate "报告 HTML 转义内容（严重·结构被撑坏）" scripts/report_html.py \
-  '    t = html.escape(t, quote=False)' \
+  '    t = html_escape(t)' \
   '    pass'
 
 mutate "有序列表不从 1 重来（中·两个「1.」）" scripts/report_html.py \
@@ -138,6 +138,10 @@ mutate "还原档案里被降级的标题（严重·整份没有大标题）" sc
 mutate "没报告时拒绝导出（中·空壳文件被转发）" scripts/report_html.py \
   '    if not report:' \
   '    if False:'
+
+mutate "点标题真的跳过去（严重·转发出去点不动）" scripts/report_html.py \
+  "    var a=e.target.closest('a[href^=\"#\"]'); if(!a) return;" \
+  "    var a=null; if(!a) return;"
 
 mutate "空的那一格也要打出来（严重·假装覆盖）" scripts/check_rules.py \
   '        if fname is None:' \
