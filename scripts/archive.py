@@ -43,8 +43,33 @@ UNANSWERED = "未答"
 MODES = {"副业": "副业体检：四问，卖的是自己的时间和手艺，不走六问",
          "筛查": "轻量筛查：只查三项硬伤，未发现不等于可以做",
          "诊断": "全面诊断：六问 + 失败模式 + 闸门 + 报告"}
-# 副业走四问，进度分母和六问不同
+# 副业走四问，进度分母和六问不同。
+# 这个常量写了三轮都没人调用 —— save 一直在报「进度 4/6，下一问是第 5 问」，
+# 而副业根本没有第 5 问。第一次真跑副业这条路才发现。
 MODE_STEPS = {"副业": 4, "筛查": 6, "诊断": 6}
+# 筛查留满六问的小节：SKILL.md 说筛查答过的能直接升级成全面诊断，
+# 砍掉就升不上去了。筛查错的不是分母，是 save 那句「下一问是第 2 问」——
+# 筛查只问第 1 问，做完就停。
+SIDE_TITLES = {
+    1: "你卖什么，卖给谁",
+    2: "和现在的工作冲不冲突",
+    3: "一单多少钱，要你几个小时",
+    4: "钱怎么收，出事怎么办",
+}
+
+
+def titles_for(mode: str) -> dict:
+    """副业的四问和六问问的不是一回事，标题不能共用。
+
+    共用的后果不是难看：副业第 2 问答的是「和本职冲不冲突」，
+    存进「## 第2问 现状替代品是什么」——**原话没丢，标签是错的**。
+    下次续聊的人（和模型）照着错标题读，比没存还糟。
+    """
+    return SIDE_TITLES if mode == "副业" else STEP_TITLES
+
+
+def steps_for(mode: str) -> int:
+    return MODE_STEPS.get(mode, TOTAL_STEPS)
 DECLINE_KINDS = {
     "说不出": "给了一个听起来像答案的非答案，他没意识到自己没答 → 追问",
     "没想好": "他知道自己没想清楚 → 这本身是最有价值的发现，记下来给动作",
@@ -105,7 +130,7 @@ def parse(path: Path) -> dict:
     except ValueError:
         answered = 0
     # frontmatter 的「已答」是写入顺序的最大值，跳问时会说谎。真相在正文里。
-    done, next_q = progress(body)
+    done, next_q = progress(body, meta.get("模式", "诊断"))
     return {
         "path": path,
         # find_all 用它做正面判定：手工写的档案文件名可能不规范，但有这个键。
@@ -174,9 +199,10 @@ def match(project: str):
     return None
 
 
-def blank(project: str) -> str:
+def blank(project: str, mode: str = "诊断") -> str:
+    titles, n = titles_for(mode), steps_for(mode)
     sections = "\n\n".join(
-        f"## 第{i}问 {STEP_TITLES[i]}\n\n> {UNANSWERED}" for i in range(1, TOTAL_STEPS + 1)
+        f"## 第{i}问 {titles[i]}\n\n> {UNANSWERED}" for i in range(1, n + 1)
     )
     return (
         f"---\n项目: {project}\n创建: {today()}\n更新: {today()}\n"
@@ -222,20 +248,21 @@ def _has_real_answer(section: str) -> bool:
     return False
 
 
-def progress(body: str) -> tuple:
+def progress(body: str, mode: str = "诊断") -> tuple:
     """(已答数, 下一个未答的问号)。唯一真相来源，三处命令共用。
 
     曾经 cmd_find 看正文、cmd_save 和 frontmatter 看 max(step)，
     同一份档案两个答案：save 说「六问已答完」，find 说「下一问是第 1 问」。
     半修比不修更危险 —— 读到哪个就信哪个。
     """
-    done, nxt = 0, TOTAL_STEPS + 1
-    for i in range(1, TOTAL_STEPS + 1):
+    total = steps_for(mode)
+    done, nxt = 0, total + 1
+    for i in range(1, total + 1):
         m = re.search(rf"^## 第{i}问[^\n]*\n(.*?)(?=^## |\Z)", body,
                       re.MULTILINE | re.DOTALL)
         if m and _has_real_answer(m.group(1)):
             done += 1
-        elif nxt > TOTAL_STEPS:
+        elif nxt > total:
             nxt = i
     return done, nxt
 
@@ -313,11 +340,13 @@ def cmd_show(args) -> int:
 
 def cmd_save(args) -> int:
     step = args.step
-    if not 1 <= step <= TOTAL_STEPS:
-        print(f"step 必须在 1..{TOTAL_STEPS} 之间，收到 {step}", file=sys.stderr)
-        return 1
-
     doc = load_or_create(args.project)
+    mode = doc.get("mode") or "诊断"
+    top = steps_for(mode)
+    if not 1 <= step <= top:
+        tail = "" if mode == "诊断" else f"（这份档案是{mode}模式）"
+        print(f"step 必须在 1..{top} 之间，收到 {step}{tail}", file=sys.stderr)
+        return 1
     if args.declined:
         if args.declined not in DECLINE_KINDS:
             print(f"--declined 只能是：{' / '.join(DECLINE_KINDS)}", file=sys.stderr)
@@ -330,9 +359,12 @@ def cmd_save(args) -> int:
     answer = args.answer.strip() or UNANSWERED
     quoted = "\n".join(f"> {line}" if line.strip() else ">" for line in answer.splitlines())
 
-    heading = f"## 第{step}问 {STEP_TITLES[step]}"
+    heading = f"## 第{step}问 {titles_for(mode)[step]}"
+    # 按「## 第N问」认小节，不按完整标题认：档案可能是手写的、可能在
+    # mode --set 之前就建好了、标题也可能改过版。认前缀就都能对上，
+    # 顺手把标题改写成这个模式该有的那个。
     pattern = re.compile(
-        rf"^{re.escape(heading)}\s*\n(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL
+        rf"^## 第{step}问[^\n]*\n(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL
     )
 
     def _build(m):
@@ -349,14 +381,22 @@ def cmd_save(args) -> int:
     if n == 0:  # 手工写的档案可能没有这一节，补在末尾而不是报错
         body = doc["body"].rstrip() + "\n\n" + replacement
 
-    done, nxt = progress(body)
+    done, nxt = progress(body, mode)
     write(doc, body, answered=done, status=doc["status"])
     appended = args.append and n > 0 and "—— 追问后 ——" in body
     print(f"{'已追加（原答案保留）' if appended else '已存'}：第{step}问 → {doc['path']}")
-    if nxt <= TOTAL_STEPS:
-        print(f"进度 {done}/{TOTAL_STEPS}，下一问是第 {nxt} 问")
+    # 模型是照着这一行决定下一句说什么的。副业报「下一问是第 5 问」，
+    # 它就真的去问一个四问里不存在的问题；筛查报「下一问是第 2 问」，
+    # 它就把一次说好只查三项的筛查拖成了半截六问。
+    if mode == "筛查":
+        print("筛查只问这一问（付费证据）。另外两项——主体资格、"
+              "核心功能是不是已经有人免费提供——查完直接出报告，别接着问第 2 问。")
+    elif nxt <= top:
+        print(f"进度 {done}/{top}，下一问是第 {nxt} 问")
+    elif mode == "副业":
+        print(f"四问已答完（{done}/{top}），可以出体检报告了（副业不走闸门检查）")
     else:
-        print(f"六问已答完（{done}/{TOTAL_STEPS}），可以做闸门检查和出报告了")
+        print(f"六问已答完（{done}/{top}），可以做闸门检查和出报告了")
     return 0
 
 
@@ -376,12 +416,45 @@ def cmd_report(args) -> int:
     if n == 0:
         body = doc["body"].rstrip() + "\n\n" + replacement
 
-    done, _ = progress(body)
+    mode = doc.get("mode") or "诊断"
+    top = steps_for(mode)
+    done, _ = progress(body, mode)
     write(doc, body, answered=done, status="已完成")
     print(f"报告已存入：{doc['path']}")
-    if done < TOTAL_STEPS:
-        print(f"注意：只答了 {done}/{TOTAL_STEPS} 问，报告里必须标明哪几问未答")
+    # 筛查本来就只问第 1 问，拿六问的分母去量它，每次都会报一句假警告。
+    if mode != "筛查" and done < top:
+        print(f"注意：只答了 {done}/{top} 问，报告里必须标明哪几问未答")
     return 0
+
+
+def _retitle(body: str, mode: str) -> str:
+    """把每个「## 第N问」的标题换成这个模式该用的那个。
+
+    只换标题行，答案原封不动 —— 标题是我们写的，答案是用户说的。
+    """
+    for i, t in titles_for(mode).items():
+        body = re.sub(rf"^## 第{i}问[^\n]*$", f"## 第{i}问 {t}", body,
+                      count=1, flags=re.MULTILINE)
+    return body
+
+
+def _drop_empty_tail(body: str, keep: int) -> tuple:
+    """副业只有四问，第 5、6 问那两节永远填不满，删掉。
+
+    **只删空的。** 里面有真答案就留着并且说出来 —— 这个技能历史上
+    最贵的一类 bug 就是「静默删数据」，宁可留一节碍眼的。
+    """
+    kept = []
+    for i in range(keep + 1, TOTAL_STEPS + 1):
+        m = re.search(rf"^## 第{i}问[^\n]*\n(.*?)(?=^## |\Z)", body,
+                      re.MULTILINE | re.DOTALL)
+        if not m:
+            continue
+        if _has_real_answer(m.group(1)):
+            kept.append(i)
+            continue
+        body = body[:m.start()] + body[m.end():]
+    return body, kept
 
 
 def cmd_mode(args) -> int:
@@ -390,11 +463,35 @@ def cmd_mode(args) -> int:
     不标的话，一次完成的轻量筛查在档案里长得像一次半途而废的全面诊断
     （都是「已答 1/6」），下次开场会说「上次聊到第2问，接着来？」——
     而用户根本没打算走全面诊断。
+
+    标记还要**把档案改成那个模式的样子**：只写一行 frontmatter，
+    正文照样是六问的标题和六个小节，副业的答案就还是贴着六问的标签。
     """
     doc = load_or_create(args.project)
+    old = doc.get("mode") or "诊断"
+    body = doc["body"]
+
+    # 副业的四问和六问问的不是一回事。已经存了副业答案的档案改判成六问，
+    # 那些答案会被扣上「现状替代品是什么」这种对不上的标题 —— 拦住，
+    # 让它新建一份，别把答过的话贴错标签。
+    if old == "副业" and args.set != "副业" and progress(body, "副业")[0]:
+        print(f"拒绝改判：「{args.project}」里存的是副业四问的答案，"
+              f"和六问对不上号。要走{args.set}请新建一份档案。", file=sys.stderr)
+        return 1
+
+    body = _retitle(body, args.set)
+    if args.set == "副业":
+        body, kept = _drop_empty_tail(body, steps_for("副业"))
+        if kept:
+            print(f"⚠️  第{'、'.join(str(i) for i in kept)}问里有答案，没删 —— "
+                  "副业体检用不到它们，但删掉是丢数据。", file=sys.stderr)
+
     doc["mode"] = args.set
-    write(doc, doc["body"], answered=doc["answered"], status=doc["status"])
+    done, _ = progress(body, args.set)
+    write(doc, body, answered=done, status=doc["status"])
     print(f"已标记：{args.project} → {args.set}（{MODES[args.set]}）")
+    if args.set == "副业":
+        print("档案已改成四问的骨架（标题按四问，空的第5、6问已去掉）。")
     return 0
 
 

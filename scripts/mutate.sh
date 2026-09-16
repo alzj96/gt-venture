@@ -73,13 +73,13 @@ mutate "pattern/强项 不删手写小节（严重·静默删数据）" scripts/
   'for kind in kinds:'
 
 mutate "断点取第一个未答（中·跳答后漏问）" scripts/archive.py \
-  '    done, next_q = progress(body)' \
+  '    done, next_q = progress(body, meta.get("模式", "诊断"))' \
   '    done, next_q = answered, answered + 1'
 
 # 这条要回滚两处：回落逻辑 + 写全局键。只回滚前者的话，脚本根本不写
 # 全局键，回落打不着，变异是惰性的 —— 变异台第一次跑就是这么误报的。
 mutate "save/report 用真进度（中·口径分裂）" scripts/archive.py \
-  '    done, nxt = progress(body)
+  '    done, nxt = progress(body, mode)
     write(doc, body, answered=done, status=doc["status"])' \
   '    done, nxt = max(doc["answered"], step), max(doc["answered"], step) + 1
     write(doc, body, answered=done, status=doc["status"])'
@@ -142,6 +142,28 @@ mutate "没报告时拒绝导出（中·空壳文件被转发）" scripts/report
 mutate "点标题真的跳过去（严重·转发出去点不动）" scripts/report_html.py \
   "    var a=e.target.closest('a[href^=\"#\"]'); if(!a) return;" \
   "    var a=null; if(!a) return;"
+
+# —— 副业和筛查这两条路，第一次真跑才发现全线按六问走。
+#    MODE_STEPS 写了三轮没接线，下面四条就是那几根线。
+mutate "副业按四问算进度（严重·把模型推去问第5问）" scripts/archive.py \
+  '    return MODE_STEPS.get(mode, TOTAL_STEPS)' \
+  '    return TOTAL_STEPS'
+
+mutate "副业有自己的问题标题（严重·答案贴错标签）" scripts/archive.py \
+  '    return SIDE_TITLES if mode == "副业" else STEP_TITLES' \
+  '    return STEP_TITLES'
+
+mutate "筛查不催着问第2问（严重·三项拖成半截六问）" scripts/archive.py \
+  '    if mode == "筛查":' \
+  '    if False:'
+
+mutate "改模式不静默删有答案的小节（严重·丢数据）" scripts/archive.py \
+  '        if _has_real_answer(m.group(1)):' \
+  '        if False:'
+
+mutate "页眉页脚跟着模式走（严重·筛查页上写着诊断）" scripts/report_html.py \
+  '    kind, foot = CHROME.get(mode, CHROME["诊断"])' \
+  '    kind, foot = CHROME["诊断"]'
 
 mutate "空的那一格也要打出来（严重·假装覆盖）" scripts/check_rules.py \
   '        if fname is None:' \

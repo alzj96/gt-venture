@@ -376,6 +376,130 @@ class TestArchive(Base):
         self.assertNotEqual(r.returncode, 0)
 
 
+class TestModes(Base):
+    """副业体检和轻量筛查这两条路，第一次真跑出来的东西。
+
+    在此之前它们只有 find 一处特判，save / progress / 报告 / HTML 全都
+    照着六问走。MODE_STEPS 那个常量写了三轮，一处都没被调用过——
+    **写了个开关，没接线。** 这一组测试就是那根线。
+    """
+
+    def _side(self, project="接单"):
+        run(ARCHIVE, "mode", "--project", project, "--set", "副业", ws=self.ws)
+        return project
+
+    def test_side_hustle_save_never_points_at_a_question_that_doesnt_exist(self):
+        """[严重·把模型推去问不存在的问题] 副业只有四问。
+
+        save 的输出是模型决定下一句说什么的依据。它报「进度 4/6，
+        下一问是第 5 问」，模型就真的去问六问里的第 5 问——而
+        side-hustle.md 明写副业不走六问。用户答完四问该收尾了，
+        却被接着问「你观察到了什么」。
+        """
+        p = self._side()
+        for i in range(1, 5):
+            r = run(ARCHIVE, "save", "--project", p, "--step", str(i),
+                    "--answer", f"第{i}问的答案", ws=self.ws)
+            self.assertNotIn("/6", r.stdout, f"第{i}问的进度用了六问的分母")
+        self.assertNotIn("第 5 问", r.stdout, "副业答完四问还在指向第 5 问")
+        self.assertIn("4/4", r.stdout, "没报四问的分母")
+
+    def test_side_hustle_rejects_a_fifth_question(self):
+        """[中·越界] 四问模式里 --step 5 应该被拦下，而不是默默写进去。"""
+        p = self._side()
+        r = run(ARCHIVE, "save", "--project", p, "--step", "5",
+                "--answer", "x", ws=self.ws)
+        self.assertNotEqual(r.returncode, 0, "副业模式接受了第 5 问")
+        self.assertIn("副业", r.stderr, "报错没说清楚是模式的问题")
+
+    def test_side_hustle_answers_are_not_filed_under_six_question_titles(self):
+        """[严重·贴错标签] 副业第 2 问答的是「和本职冲不冲突」。
+
+        六问的第 2 问是「现状替代品是什么」。共用标题的后果不是难看：
+        **原话没丢，标签是错的**——下次续聊的人照着错标题读这段话，
+        比没存还糟。存原话不存概括这条纪律，管的不只是答案本身。
+        """
+        p = self._side()
+        run(ARCHIVE, "save", "--project", p, "--step", "2",
+            "--answer", "我在职，公司也做这个", ws=self.ws)
+        t = self.archive_text(p)
+        self.assertIn("## 第2问 和现在的工作冲不冲突", t)
+        self.assertNotIn("现状替代品", t, "副业档案里还留着六问的标题")
+        self.assertIn("我在职，公司也做这个", t, "答案本身丢了")
+
+    def test_marking_side_hustle_drops_the_two_empty_questions(self):
+        """[中·永远填不满] 副业档案留着第 5、6 问，进度永远差两问。"""
+        run(ARCHIVE, "save", "--project", "接单", "--step", "1",
+            "--answer", "先答再标模式", ws=self.ws)
+        run(ARCHIVE, "mode", "--project", "接单", "--set", "副业", ws=self.ws)
+        t = self.archive_text("接单")
+        self.assertNotIn("## 第5问", t)
+        self.assertNotIn("## 第6问", t)
+        self.assertIn("先答再标模式", t, "改骨架把答案弄丢了")
+
+    def test_marking_side_hustle_keeps_answered_tail_sections(self):
+        """[严重·静默删数据] 只删空的那两节。
+
+        有答案还删，就是这个技能历史上最贵的那类 bug。宁可留一节碍眼的。
+        """
+        for i in (1, 5):
+            run(ARCHIVE, "save", "--project", "接单", "--step", str(i),
+                "--answer", f"第{i}问有话", ws=self.ws)
+        r = run(ARCHIVE, "mode", "--project", "接单", "--set", "副业", ws=self.ws)
+        t = self.archive_text("接单")
+        self.assertIn("第5问有话", t, "把答过的第 5 问删了")
+        self.assertIn("5", r.stderr, "删不掉的那一节没告诉用户")
+
+    def test_side_hustle_archive_refuses_to_be_rebranded_as_six_questions(self):
+        """[严重·贴错标签] 存了四问答案的档案改判成诊断，答案就对不上号了。"""
+        p = self._side()
+        run(ARCHIVE, "save", "--project", p, "--step", "2",
+            "--answer", "在职冲突的答案", ws=self.ws)
+        r = run(ARCHIVE, "mode", "--project", p, "--set", "诊断", ws=self.ws)
+        self.assertNotEqual(r.returncode, 0, "让副业档案改判成六问了")
+        self.assertIn("在职冲突的答案", self.archive_text(p), "拒绝的同时动了档案")
+
+    def test_screening_save_does_not_push_toward_question_two(self):
+        """[严重·把说好的三项拖成半截六问] 筛查只问第 1 问，做完就停。
+
+        save 报「进度 1/6，下一问是第 2 问」，模型就接着问下去——
+        用户是奔着「快速看看有没有硬伤」来的，结果被问了一半的六问，
+        而且档案里留下一份长得像半途而废的诊断。
+        """
+        run(ARCHIVE, "mode", "--project", "筛", "--set", "筛查", ws=self.ws)
+        r = run(ARCHIVE, "save", "--project", "筛", "--step", "1",
+                "--answer", "已经有人付过钱", ws=self.ws)
+        self.assertNotIn("下一问是第 2 问", r.stdout)
+        self.assertIn("出报告", r.stdout, "没告诉模型筛查该收尾了")
+
+    def test_screening_keeps_six_sections_so_it_can_be_upgraded(self):
+        """[中·升不上去] SKILL.md 承诺筛查答过的直接接着走全面诊断。
+
+        砍掉第 2-6 问的小节，这个承诺就兑现不了，用户要重答第 1 问。
+        """
+        run(ARCHIVE, "mode", "--project", "筛", "--set", "筛查", ws=self.ws)
+        run(ARCHIVE, "save", "--project", "筛", "--step", "1",
+            "--answer", "已经有人付过钱", ws=self.ws)
+        run(ARCHIVE, "mode", "--project", "筛", "--set", "诊断", ws=self.ws)
+        r = run(ARCHIVE, "find", ws=self.ws)
+        self.assertIn("已答 1/6", r.stdout)
+        self.assertIn("下一问是第 2 问", r.stdout, "升级后重问了第 1 问")
+
+    def test_screening_report_does_not_warn_about_unanswered_questions(self):
+        """[中·每次都报一句假警告] 筛查本来就只问一问。
+
+        拿六问的分母去量它，report 每次都说「只答了 1/6，报告里必须标明
+        哪几问未答」——而筛查报告里本来就有「没查的是这些」那一节。
+        """
+        run(ARCHIVE, "mode", "--project", "筛", "--set", "筛查", ws=self.ws)
+        run(ARCHIVE, "save", "--project", "筛", "--step", "1",
+            "--answer", "已经有人付过钱", ws=self.ws)
+        f = self.ws / "_r.md"
+        f.write_text("# 筛查：筛\n\n## 查了三样，结果是\n\n没中\n", encoding="utf-8")
+        r = run(ARCHIVE, "report", "--project", "筛", "--file", str(f), ws=self.ws)
+        self.assertNotIn("只答了", r.stdout)
+
+
 class TestResources(Base):
 
     def test_write_without_consent_refused(self):
@@ -801,6 +925,54 @@ class TestReportHtml(Base):
         r = run(REPORT_HTML, "--project", project, ws=self.ws)
         hits = list((self.ws / "创业档案").glob("*.html"))
         return r, (hits[0].read_text(encoding="utf-8") if hits else "")
+
+    def test_screening_page_never_calls_itself_a_diagnosis(self):
+        """[严重·页面装修拆了正文的台] 筛查报告通篇在说「这不是诊断」。
+
+        而页眉和页脚各硬写了一次「gt-venture · 创业诊断」——一份
+        转发出去的文件，读者最先看到的就是页眉。落款还承诺「正文里
+        每个判断都配了什么能推翻它」，那是六问诊断才有的写法，
+        体检和筛查的骨架里没这一节：**一句兑现不了的承诺。**
+        """
+        run(ARCHIVE, "save", "--project", "筛", "--step", "1",
+            "--answer", "有人付过钱", ws=self.ws)
+        run(ARCHIVE, "mode", "--project", "筛", "--set", "筛查", ws=self.ws)
+        f = self.ws / "_r.md"
+        f.write_text("# 筛查：筛\n\n日期：2026-09-16\n\n## 查了三样\n\n没中\n",
+                     encoding="utf-8")
+        run(ARCHIVE, "report", "--project", "筛", "--file", str(f), ws=self.ws)
+        run(REPORT_HTML, "--project", "筛", ws=self.ws)
+        h = list((self.ws / "创业档案").glob("*.html"))[0].read_text(encoding="utf-8")
+        self.assertNotIn("创业诊断", h, "筛查报告的页面上还写着「创业诊断」")
+        self.assertIn("轻量筛查", h)
+        self.assertNotIn("什么能推翻它", h, "落款承诺了一节筛查骨架里没有的东西")
+
+    def test_side_hustle_page_is_labelled_a_checkup(self):
+        """[中·同一处硬编码的另一半] 体检不是诊断，页眉也别那么写。"""
+        run(ARCHIVE, "save", "--project", "接", "--step", "1",
+            "--answer", "接单", ws=self.ws)
+        run(ARCHIVE, "mode", "--project", "接", "--set", "副业", ws=self.ws)
+        f = self.ws / "_r.md"
+        f.write_text("# 体检：接\n\n日期：2026-09-16\n\n## 你在做的是哪一种\n\nA\n",
+                     encoding="utf-8")
+        run(ARCHIVE, "report", "--project", "接", "--file", str(f), ws=self.ws)
+        run(REPORT_HTML, "--project", "接", ws=self.ws)
+        h = list((self.ws / "创业档案").glob("*.html"))[0].read_text(encoding="utf-8")
+        self.assertIn("副业体检", h)
+        self.assertNotIn("创业诊断", h)
+
+    def test_overview_without_gates_draws_no_gate_grid(self):
+        """[严重·拿没查过的冒充查过了] 体检和筛查不走四道闸。
+
+        它们的概览只有「结论」一行。渲染器要么画出结论、不画那四格，
+        要么就会凭空造出四个「未查」的格子——一份没查过闸的报告，
+        顶上挂着一排闸门状态，那是在假装覆盖。
+        """
+        md = ("# 筛查：X\n\n日期：2026-09-16\n\n## 概览\n\n"
+              "- 结论：命中第 1 条\n\n## 查了三样\n\n中了\n")
+        _, h = self._make(report=md)
+        self.assertIn('class="verdict"', h, "结论没画出来")
+        self.assertNotIn('class="gates"', h, "凭空画了四道闸")
 
     def test_no_external_requests_at_all(self):
         """[严重·转发即失效] 引一个 CDN 或字体，断网/微信内置浏览器里就是裸文本。

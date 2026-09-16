@@ -43,6 +43,23 @@ def html_escape(t: str) -> str:
 
 
 ARCHIVE_DIR = "创业档案"
+# 页眉页脚曾经三种模式共用一句「gt-venture · 创业诊断」。
+# 在一份通篇写着「这不是诊断」的筛查报告上，页眉和页脚各说一次「诊断」——
+# **这份报告最重要的那句话，被它自己的页面装修拆了台。**
+# 落款还承诺「正文里每个判断都配了什么能推翻它」，那是六问诊断的写法，
+# 体检和筛查的骨架里根本没这一节：一句兑现不了的承诺。
+CHROME = {
+    "诊断": ("创业诊断",
+             "正文里每个判断都配了「什么能推翻它」——"
+             "<strong>你手上有它不知道的信息时，请推翻它。</strong>"),
+    "副业": ("副业体检",
+             "体检看的是四件事：你卖什么、和本职冲不冲突、时薪多少、钱怎么收。"
+             "<strong>没写进来的，就是这次没看。</strong>"),
+    "筛查": ("轻量筛查",
+             "<strong>这是筛查，不是诊断。</strong>"
+             "它只查了三样能一票否决的东西，三样都没中也不等于这事能做——"
+             "没查的那几项，正文「没查的是这些」里列着。"),
+}
 SKIP_FILES = {"模式.md", "强项.md", "敏感问题.md", "资源.md"}
 
 CSS = """
@@ -562,7 +579,7 @@ def extract_report(text: str) -> str:
     return re.sub(r"^##(#{1,4})(?= )", r"\1", body, flags=re.MULTILINE)
 
 
-def render(title: str, report_md: str, project: str) -> str:
+def render(title: str, report_md: str, project: str, mode: str = "诊断") -> str:
     verdict, gates, answered, rest = parse_overview(report_md)
 
     # H1 和紧随其后的日期行从正文里摘出来单独排，剩下的走通用渲染
@@ -586,6 +603,7 @@ def render(title: str, report_md: str, project: str) -> str:
     if answered and "已答" not in head:
         bits.append(f"已答 {answered}")
     sub = " ｜ ".join(x for x in bits if x)
+    kind, foot = CHROME.get(mode, CHROME["诊断"])
     today = _dt.date.today().isoformat()
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -599,14 +617,13 @@ def render(title: str, report_md: str, project: str) -> str:
 <div class="layout">
 {toc}
 <main class="doc">
-<p class="eyebrow">gt-venture · 创业诊断　|　{html_escape(project)}　|　导出于 {today}</p>
+<p class="eyebrow">gt-venture · {kind}　|　{html_escape(project)}　|　导出于 {today}</p>
 <h1>{html_escape(title)}</h1>
 {f'<p class="sub">{_inline(sub)}</p>' if sub else ''}
 {top}
 {body}
 <div class="foot">
-由 <strong>gt-venture · 创业诊断</strong> 生成。正文里每个判断都配了「什么能推翻它」——
-<strong>你手上有它不知道的信息时，请推翻它。</strong>
+由 <strong>gt-venture · {kind}</strong> 生成。{foot}
 </div>
 </main>
 </div>
@@ -636,6 +653,10 @@ def main() -> int:
         print("先用 archive.py report 把报告存进去，再导出。", file=sys.stderr)
         return 2
 
+    raw = src.read_text(encoding="utf-8")
+    mm = re.search(r"^模式:\s*(\S+)\s*$", raw, re.MULTILINE)
+    mode = mm.group(1) if mm and mm.group(1) in CHROME else "诊断"
+
     title = f"诊断：{args.project}"
     m = re.search(r"^#\s+(.+)$", report, re.MULTILINE)
     if m:
@@ -643,7 +664,7 @@ def main() -> int:
 
     out = args.out or src.with_suffix(".html")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(title, report, args.project), encoding="utf-8")
+    out.write_text(render(title, report, args.project, mode), encoding="utf-8")
     print(f"报告已导出：{out}")
     print("这是一个单文件 HTML，可以直接发给别人，断网也能打开。")
     print("⚠️  正文照样要发进对话——宿主不一定让用户拿得到生成的文件。")
