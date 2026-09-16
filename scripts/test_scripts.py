@@ -1155,13 +1155,41 @@ class TestReportHtml(Base):
 
         而报告转发出去多半是在手机或窄面板里打开的——把导航藏掉，
         「分模块」这件事就只在宽屏成立，宽屏恰恰是最少见的那个场景。
-        窄屏要换形态（横排），不是消失。
+        **窄屏要换形态，不是消失。** 形态换过两次：先是顶部横排一行
+        （够得着，但占着正文最值钱的第一屏，章节一多还折成两三行），
+        现在是左下角悬浮按钮 + 左侧抽屉，照那篇长文的做法。
+        这条测试钉的是「够得着」，不是钉具体哪种形态。
         """
         _, h = self._make(report=self.REPORT)
-        narrow = h[h.index("@media(max-width:940px)"):][:600]
-        self.assertNotIn("display:none", narrow.split("}")[0] + narrow.split(".toc{")[1][:200],
-                         "窄屏把目录整个藏了")
-        self.assertIn("flex-wrap:wrap", narrow, "窄屏没有给目录换成横排形态")
+        narrow = h[h.index("@media(max-width:940px)"):][:1400]
+        self.assertIn("#menuBtn{display:inline-flex", narrow, "窄屏没有打开目录的入口")
+        self.assertIn(".toc.open{transform:none}", narrow, "抽屉推不出来")
+        self.assertIn("#scrim.show{display:block}", narrow, "抽屉没有遮罩")
+
+    def test_toc_drawer_closes_after_picking_a_section(self):
+        """[严重·点了像没反应] 抽屉盖在正文上。
+
+        点完条目页面确实跳了，但抽屉还开着——用户看到的是自己刚点的
+        那一栏，不是跳到的那一节，和「点了没反应」在体感上没区别。
+        """
+        _, h = self._make(report=self.REPORT)
+        one = h.replace("\n", "")
+        self.assertIn("if(e.target.closest('a')) closeToc();", one, "点条目不收抽屉")
+        self.assertIn("scrim.addEventListener('click',closeToc)", one, "点遮罩关不掉")
+        self.assertIn('<button id="menuBtn"', h, "没有悬浮按钮")
+        self.assertIn('aria-label="打开目录"', h, "按钮没有无障碍标签")
+
+    def test_menu_button_gets_out_of_the_way_of_a_term_card(self):
+        """[中·压在解释文字上] 手机上术语卡是贴底的抽屉。
+
+        它和左下角那个按钮抢同一块地方。卡片开着的时候按钮要让位，
+        否则用户点开一个不懂的词，解释被自己的目录按钮压住一角。
+        """
+        _, h = self._make(report="# 标题\n\n## 一\n\n先说类目资质。\n\n## 二\n\nB\n\n## 三\n\nC\n")
+        one = h.replace("\n", "")
+        self.assertIn("body.term-open #menuBtn", h, "术语卡开着时按钮没让位")
+        self.assertIn("classList.add('term-open')", one, "没人给 body 打这个标记")
+        self.assertIn("classList.remove('term-open')", one, "标记打上了摘不掉")
 
     def test_toc_appears_only_when_there_is_enough_to_navigate(self):
         """两节的报告不需要目录，加了只是噪音。"""

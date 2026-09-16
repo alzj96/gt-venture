@@ -165,6 +165,14 @@ mutate "页眉页脚跟着模式走（严重·筛查页上写着诊断）" scrip
   '    kind, foot = CHROME.get(mode, CHROME["诊断"])' \
   '    kind, foot = CHROME["诊断"]'
 
+mutate "点目录条目要收抽屉（严重·点了像没反应）" scripts/report_html.py \
+  "    if(e.target.closest('a')) closeToc();" \
+  "    if(false) closeToc();"
+
+mutate "术语卡开着时按钮让位（中·压在解释上）" scripts/report_html.py \
+  "    document.body.classList.add('term-open');" \
+  "    void 0;"
+
 mutate "空的那一格也要打出来（严重·假装覆盖）" scripts/check_rules.py \
   '        if fname is None:' \
   '        if False:'

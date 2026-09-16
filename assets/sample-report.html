@@ -124,16 +124,35 @@ th{background:#faf9f7;font-weight:650}
 
 /* 窄屏不是把目录藏起来，是换形态。
    报告转发出去多半在手机或窄面板里打开——把导航藏掉，"分模块"这件事
-   就只在宽屏成立，而宽屏恰恰是最少见的那个场景。 */
+   就只在宽屏成立，而宽屏恰恰是最少见的那个场景。
+
+   形态照搬那篇长文：**左下角一个悬浮按钮，点开是从左边滑出的抽屉**。
+   之前做的是顶部横排一行，够得着，但它占着正文最值钱的第一屏，
+   而且章节一多就折成两三行。悬浮按钮不占版面，手也够得到——
+   拇指在屏幕下方，不在顶部。 */
+#menuBtn,#scrim{display:none}
 @media(max-width:940px){
- .layout{display:block;padding:30px 18px 56px}
+ .layout{display:block;padding:30px 18px 76px}
  .doc{max-width:none}
- .toc{position:static;width:auto;border-left:0;border-bottom:1px solid var(--rule);
-  padding:0 0 13px;margin:0 0 24px;display:flex;flex-wrap:wrap;gap:5px 14px;align-items:baseline}
- .toc-h{width:100%;margin:0 0 3px}
- .toc a{padding:0;color:var(--soft);font-size:13px}
+ .toc{position:fixed;top:0;left:0;height:100vh;width:286px;max-width:84vw;
+  background:var(--bg);z-index:60;transform:translateX(-106%);
+  transition:transform .25s ease;overflow-y:auto;border-left:0;
+  box-shadow:0 0 48px rgba(0,0,0,.16);padding:60px 22px 40px}
+ .toc.open{transform:none}
+ .toc-h{margin:0 0 14px}
+ .toc a{padding:9px 0;color:var(--soft);font-size:14px;line-height:1.5}
  .toc a.on{color:var(--accent);font-weight:650}
- .toc a.on::before{display:none}
+ .toc a.on::before{left:-12px}
+ #menuBtn{display:inline-flex;align-items:center;gap:6px;position:fixed;
+  bottom:18px;left:18px;z-index:65;border:none;cursor:pointer;color:#fff;
+  background:var(--ink);font-family:var(--sans);font-size:13px;font-weight:600;
+  height:42px;padding:0 18px;line-height:1;border-radius:30px;
+  box-shadow:0 4px 16px rgba(0,0,0,.22)}
+ #scrim{position:fixed;inset:0;background:rgba(0,0,0,.34);z-index:55}
+ #scrim.show{display:block}
+ /* 术语卡在手机上是贴底的抽屉，和这个按钮抢同一块地方。
+    卡片开着的时候把按钮让出去，别压在解释文字上。 */
+ body.term-open #menuBtn{opacity:0;pointer-events:none;transition:opacity .18s}
 }
 @media(max-width:560px){body{font-size:16px}h1{font-size:25px}h2{font-size:20px}
  .gates{grid-template-columns:repeat(2,1fr)}.verdict{font-size:17px;padding:13px 15px}}
@@ -144,7 +163,7 @@ th{background:#faf9f7;font-weight:650}
 </head>
 <body>
 <div class="layout">
-<nav class="toc"><p class="toc-h">本报告</p><a href="#s1">一句话</a><a href="#s2">这份判断踩在什么上</a><a href="#s3">最硬的三个问题</a><a href="#s4">中国闸门</a><a href="#s5">如果只能做一件事</a><a href="#s6">我否掉了什么</a><a href="#s7">下一步</a></nav>
+<nav class="toc" id="toc"><p class="toc-h">本报告</p><a href="#s1">一句话</a><a href="#s2">这份判断踩在什么上</a><a href="#s3">最硬的三个问题</a><a href="#s4">中国闸门</a><a href="#s5">如果只能做一件事</a><a href="#s6">我否掉了什么</a><a href="#s7">下一步</a></nav>
 <main class="doc">
 <p class="eyebrow">gt-venture · 创业诊断　|　王姐优选（示例）　|　导出于 2026-09-16</p>
 <h1>诊断：王姐优选（示例）</h1>
@@ -178,11 +197,11 @@ th{background:#faf9f7;font-weight:650}
 <hr>
 <p>本报告基于你提供的信息和公开规则整理，<strong>不构成法律、财务或投资意见</strong>。</p>
 <div class="foot">
-由 <strong>gt-venture · 创业诊断</strong> 生成。正文里每个判断都配了「什么能推翻它」——
-<strong>你手上有它不知道的信息时，请推翻它。</strong>
+由 <strong>gt-venture · 创业诊断</strong> 生成。正文里每个判断都配了「什么能推翻它」——<strong>你手上有它不知道的信息时，请推翻它。</strong>
 </div>
 </main>
 </div>
+<button id="menuBtn" aria-label="打开目录">☰ 目录</button><div id="scrim"></div>
 <script>
 (function(){
   // ── 目录高亮：用 IntersectionObserver，rootMargin 下沿 -82%。
@@ -217,6 +236,28 @@ th{background:#faf9f7;font-weight:650}
     if(history.replaceState) try{history.replaceState(null,'','#'+id);}catch(_){}
   });
 
+  // ── 窄屏的目录抽屉（复刻自那篇长文：按钮 / 遮罩 / 点条目就收）
+  var toc=document.getElementById('toc'),
+      btn=document.getElementById('menuBtn'),
+      scrim=document.getElementById('scrim');
+  function closeToc(){ if(toc){toc.classList.remove('open');}
+                       if(scrim){scrim.classList.remove('show');} }
+  if(btn&&toc){
+    btn.addEventListener('click',function(){
+      toc.classList.toggle('open');
+      if(scrim) scrim.classList.toggle('show');
+    });
+  }
+  if(scrim) scrim.addEventListener('click',closeToc);
+  // 点了条目就收起来 —— 上面那个锚点处理器已经把页面滚过去了，
+  // 抽屉还盖着的话，用户看到的是自己刚点的那一栏，不是跳到的那一节。
+  if(toc) toc.addEventListener('click',function(e){
+    if(e.target.closest('a')) closeToc();
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape') closeToc();
+  });
+
   // ── 术语卡：桌面 hover 走 CSS，点击/触屏走这里（手机没有 hover，必须能点）
   var openTerm=null, openAtY=0;
   function narrow(){ return matchMedia('(max-width:700px)').matches; }
@@ -230,7 +271,10 @@ th{background:#faf9f7;font-weight:650}
     c.style.setProperty('--dx',dx+'px');
     if(r.bottom>innerHeight-m && t.getBoundingClientRect().top>r.height+m) c.classList.add('up');
   }
-  function closeTerm(){ if(openTerm){ openTerm.classList.remove('open'); openTerm=null; } }
+  function closeTerm(){
+    if(openTerm){ openTerm.classList.remove('open'); openTerm=null;
+                  document.body.classList.remove('term-open'); }
+  }
   document.addEventListener('click',function(e){
     if(e.target.closest('.term-card')) return;        // 卡片内可选中文字
     var t=e.target.closest('.term');
@@ -238,6 +282,7 @@ th{background:#faf9f7;font-weight:650}
     e.preventDefault();
     if(t===openTerm){ closeTerm(); return; }
     closeTerm(); place(t); t.classList.add('open'); openTerm=t; openAtY=scrollY;
+    document.body.classList.add('term-open');
   });
   document.addEventListener('mouseover',function(e){
     var t=e.target.closest('.term'); if(t&&t!==openTerm&&!narrow()) place(t);
