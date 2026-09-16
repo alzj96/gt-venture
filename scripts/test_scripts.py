@@ -520,6 +520,54 @@ class TestModes(Base):
         self.assertNotIn("只答了", r.stdout)
 
 
+class TestWorkBuddyRunGuards(Base):
+    """WorkBuddy + 免费 Hy4 真跑出来、写在文档里拦不住小模型的两件事。"""
+
+    def test_saving_a_later_question_hands_over_the_command_for_skipped_ones(self):
+        """[中·下次打开会重问] 第 5 问并进了第 6 问，档案里第 5 问却一直「未答」。
+
+        存完第 6 问时脚本其实打了「下一问是第 5 问」——Hy4 没理。
+        光报进度不够，要把补存那一句命令原样递给它。
+        """
+        for i in (1, 2, 3, 4, 6):
+            r = run(ARCHIVE, "save", "--project", "喂猫", "--step", str(i),
+                    "--answer", f"第{i}问", ws=self.ws)
+        self.assertIn("第 5 问还是「未答」", r.stdout, "跳过的那一问没被点名")
+        self.assertIn("--step 5", r.stdout, "没把补存的命令递出来")
+        self.assertIn("并入第 6 问", r.stdout)
+        r = run(ARCHIVE, "save", "--project", "喂猫", "--step", "5",
+                "--answer", "（并入第 6 问）", ws=self.ws)
+        self.assertIn("六问已答完", r.stdout, "补存了说明，第 5 问还算没答")
+
+    def test_no_nag_when_answering_in_order(self):
+        """按顺序答的时候不该有这句——提醒一多，真该看的那一次就被当成噪音。"""
+        for i in (1, 2, 3):
+            r = run(ARCHIVE, "save", "--project", "顺序", "--step", str(i),
+                    "--answer", "答", ws=self.ws)
+            self.assertNotIn("还是「未答」", r.stdout)
+
+    def test_report_flags_banned_jargon(self):
+        """[中·禁语] Hy4 开场就说了「赛道」。
+
+        SKILL.md 的禁语表拦不住小模型。报告落盘这一刻再拦一次：只警告不拒绝。
+        """
+        run(ARCHIVE, "save", "--project", "喂猫", "--step", "1", "--answer", "x", ws=self.ws)
+        f = self.ws / "_r.md"
+        f.write_text("# 诊断：喂猫\n\n## 一句话\n\n这个赛道已经很挤了，要形成闭环。\n", encoding="utf-8")
+        r = run(ARCHIVE, "report", "--project", "喂猫", "--file", str(f), ws=self.ws)
+        self.assertIn("禁语", r.stdout)
+        self.assertIn("赛道", r.stdout)
+        self.assertIn("闭环", r.stdout)
+        self.assertEqual(r.returncode, 0, "禁语应该只警告，不该拒绝落盘")
+
+    def test_clean_report_has_no_jargon_warning(self):
+        run(ARCHIVE, "save", "--project", "喂猫", "--step", "1", "--answer", "x", ws=self.ws)
+        f = self.ws / "_r.md"
+        f.write_text("# 诊断：喂猫\n\n## 一句话\n\n给出门几天的猫主人找人上门喂猫。\n", encoding="utf-8")
+        r = run(ARCHIVE, "report", "--project", "喂猫", "--file", str(f), ws=self.ws)
+        self.assertNotIn("禁语", r.stdout)
+
+
 class TestResources(Base):
 
     def test_write_without_consent_refused(self):

@@ -139,6 +139,14 @@ mutate "没报告时拒绝导出（中·空壳文件被转发）" scripts/report
   '    if not report:' \
   '    if False:'
 
+mutate "跳过的问把补存命令递出去（中·下次重问）" scripts/archive.py \
+  '        gaps = _unanswered_before(body, step, mode)' \
+  '        gaps = []'
+
+mutate "报告里的禁语要报出来（中·小模型拦不住）" scripts/archive.py \
+  '    hits = [w for w in BANNED if w in report]' \
+  '    hits = []'
+
 mutate "点标题真的跳过去（严重·转发出去点不动）" scripts/report_html.py \
   "    var a=e.target.closest('a[href^=\"#\"]'); if(!a) return;" \
   "    var a=null; if(!a) return;"

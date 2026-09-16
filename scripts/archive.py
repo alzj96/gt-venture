@@ -393,11 +393,40 @@ def cmd_save(args) -> int:
               "核心功能是不是已经有人免费提供——查完直接出报告，别接着问第 2 问。")
     elif nxt <= top:
         print(f"进度 {done}/{top}，下一问是第 {nxt} 问")
+        # WorkBuddy + Hy4 实测：第 5 问按阶段表并进了第 6 问，存完第 6 问
+        # 这里打的是「下一问是第 5 问」——它没理，第 5 问在档案里一直是「未答」，
+        # 下次打开就会重问。光报进度不够，要把补存那一句命令直接递到它手上。
+        gaps = _unanswered_before(body, step, mode)
+        if gaps:
+            nums = "、".join(str(g) for g in gaps)
+            print(f"⚠️  第 {nums} 问还是「未答」，而你已经存到第 {step} 问了。"
+                  f"如果是跳过了、或者并进了别的问，现在就存一句说明，"
+                  f"不存的话下次打开会把它重问一遍：")
+            for g in gaps:
+                print(f'   save --project "{args.project}" --step {g} '
+                      f'--answer "（并入第 {step} 问）"   ← 或写「（开场已讲：……）」')
     elif mode == "副业":
         print(f"四问已答完（{done}/{top}），可以出体检报告了（副业不走闸门检查）")
     else:
         print(f"六问已答完（{done}/{top}），可以做闸门检查和出报告了")
     return 0
+
+
+def _unanswered_before(body: str, step: int, mode: str) -> list:
+    """step 之前还空着的那几问。"""
+    out = []
+    for i in range(1, step):
+        m = re.search(rf"^## 第{i}问[^\n]*\n(.*?)(?=^## |\Z)", body,
+                      re.MULTILINE | re.DOTALL)
+        if m and not _has_real_answer(m.group(1)):
+            out.append(i)
+    return out
+
+
+# SKILL.md「说话方式」里点名的词。它们的共同点是听起来专业、实际没信息。
+# WorkBuddy + Hy4 实测开场就用了「赛道」——写在文档里拦不住小模型，
+# 报告落盘这一刻再拦一次。只警告不拒绝：误伤一份报告比漏一个词贵。
+BANNED = ("赛道", "闭环", "抓手", "势能", "打法", "生态位", "赋能")
 
 
 def cmd_report(args) -> int:
@@ -421,6 +450,10 @@ def cmd_report(args) -> int:
     done, _ = progress(body, mode)
     write(doc, body, answered=done, status="已完成")
     print(f"报告已存入：{doc['path']}")
+    hits = [w for w in BANNED if w in report]
+    if hits:
+        print(f"⚠️  报告里有禁语：{'、'.join(hits)} —— 换成具体的话"
+              f"（谁、做什么、多少钱），见 SKILL.md「说话方式」。改完重新 report 一次。")
     # 筛查本来就只问第 1 问，拿六问的分母去量它，每次都会报一句假警告。
     if mode != "筛查" and done < top:
         print(f"注意：只答了 {done}/{top} 问，报告里必须标明哪几问未答")
