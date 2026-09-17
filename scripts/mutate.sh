@@ -201,6 +201,19 @@ mutate "正文要用的工具必须在许可名单里（严重·真机上不弹�
   '  - AskUserQuestion' \
   '  - Glob'
 
+mutate "SKILL.md 常驻体积不超过 5000 字（严重·每一轮都背着）" SKILL.md \
+  '## 结束时报状态' \
+  "$(python3 -c "print('## 结束时报状态\n\n' + '又一条顺手写进核心的教训。' * 300)")"
+
+mutate "路由表的链接要真存在（严重·路由指空）" SKILL.md \
+  '(references/declined.md)' \
+  '(references/decline.md)'
+
+# references 里的链接也要被扫到，不能只查 SKILL.md。
+mutate "参考文件之间的链接要真存在（中·挪文件时断）" references/opening.md \
+  '(asking.md#要用户选的时候怎么摆)' \
+  '(ask.md#要用户选的时候怎么摆)'
+
 mutate "术语卡开着时按钮让位（中·压在解释上）" scripts/report_html.py \
   "    document.body.classList.add('term-open');" \
   "    void 0;"

@@ -398,6 +398,57 @@ class TestSkillManifest(unittest.TestCase):
                               f"正文要用 {tool}，frontmatter 的 allowed-tools 里没有它")
 
 
+SKILL_ROOT = SCRIPTS.parent
+SKILL_MD_LIMIT = 5000
+
+
+def _markdown_links(text: str):
+    """正文里的相对链接。代码块和行内代码里的不算——那是示例，不是路由。"""
+    import re
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text = re.sub(r"`[^`\n]*`", "", text)
+    for m in re.finditer(r"\[[^\]\n]*\]\(([^)\s]+)\)", text):
+        link = m.group(1)
+        if link.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        yield link
+
+
+class TestSkillLayout(unittest.TestCase):
+    """SKILL.md 只做常驻骨架，细节住在 references 里，路由表指得到。"""
+
+    def test_skill_md_stays_under_the_resident_limit(self):
+        """[严重·每一轮都背着] SKILL.md 曾经涨到 30,757 字、972 行。
+
+        技能一被调用，SKILL.md 就整份进对话，之后模型每一轮思考都背着它。
+        每次踩坑的教训都顺手写进这里，没有东西拦，它只会越来越长——
+        对照的同类技能有检查脚本卡在 5000 字，它的常驻核心只有我们的 1/8。
+        超了就把细节下沉到 references，SKILL.md 里留一句 + 路由。
+        """
+        text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertLessEqual(
+            len(text), SKILL_MD_LIMIT,
+            f"SKILL.md 有 {len(text)} 字（Python len，含 frontmatter），上限 {SKILL_MD_LIMIT}。"
+            "把只在某些情况用得上的细节下沉到 references，核心里留一句 + 路由表的一行。")
+
+    def test_every_relative_link_in_skill_and_references_resolves(self):
+        """[严重·路由指空] 瘦身之后，行为全靠路由表指到 references 里那一份。
+
+        一个断链在这里不报错：模型照着表去读，读不到，就按自己的理解做——
+        那条规矩等于被删了，而且没有人会发现。改名、挪目录、拆文件时最容易断。
+        """
+        from urllib.parse import unquote
+        files = [SKILL_ROOT / "SKILL.md", SKILL_ROOT / "ETHOS.md"]
+        files += sorted((SKILL_ROOT / "references").rglob("*.md"))
+        broken = []
+        for f in files:
+            for link in _markdown_links(f.read_text(encoding="utf-8")):
+                target = unquote(link.split("#", 1)[0])
+                if target and not (f.parent / target).exists():
+                    broken.append(f"{f.relative_to(SKILL_ROOT)} → {link}")
+        self.assertEqual(broken, [], "这些链接指向不存在的文件：\n" + "\n".join(broken))
+
+
 class TestModes(Base):
     """副业体检和轻量筛查这两条路，第一次真跑出来的东西。
 
