@@ -95,7 +95,6 @@ references/               按需读；每份开头一句「什么时候读这份
   rules-personal-eligibility.md   第一道闸·人：身份限制的四种形状 + 条文
   rules-miniprogram-categories.md 第三道闸·地：**只覆盖微信小程序**
   rules-money.md          第四道闸·钱：要不要办执照、票怎么开
-  rules-prepaid.md        预付式消费：收预付款必须签书面合同（不挑行业）
   ai-era.md               项目里有 AI 时：量你和基础模型的距离、可托付税、写不进文字的才是资产
   premise-check.md        写报告之前那一轮：把结论踩的前提摆出来让他推翻
   report-format.md        三份报告骨架 + 交付 + 对抗评审 + 输出前自查
