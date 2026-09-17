@@ -103,6 +103,7 @@ references/               按需读；每份开头一句「什么时候读这份
   patterns.md             记这次的倾向和做对了什么
   skip-flow.md            他要跳过流程时
   archive-format.md       档案格式（脚本跑不了时手工对照）
+  knowledge/              知识库（扩建中）：00-索引、01-怎么用；门类骨架 / 深卡 / 横向规则卡 / 平台 / 钱。写卡规范见 docs/知识库写卡规范.md
 scripts/
   archive.py              档案读写、断点续跑、闸门与报告存档
   check_rules.py          规则保质期检查（新鲜度 ≠ 覆盖范围）
