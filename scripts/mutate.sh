@@ -283,6 +283,31 @@ mutate "不把「新鲜」说成「有效」（严重·误导）" scripts/check_
   'print(f"📅 拉取日期在保质期内 {len(fresh)} 条（{newest}–{oldest} 天前抄的）")' \
   'print(f"✓ 有效 {len(fresh)} 条（{newest}–{oldest} 天前核对）")'
 
+# 知识卡按档位算保质期。
+mutate "knowledge/ 下的卡也要扫（严重·过期没人知道）" scripts/check_rules.py \
+  '    kb_files = sorted((refs / "knowledge").rglob("*.md")) if (refs / "knowledge").is_dir() else []' \
+  '    kb_files = []'
+
+mutate "没写档位按规则算（严重·迁移后变宽松）" scripts/check_rules.py \
+  'DEFAULT_GRADE = "规则"' \
+  'DEFAULT_GRADE = "公开数据"'
+
+mutate "公开数据用自己的保质期（中·天天误报）" scripts/check_rules.py \
+  '    limits = {None: max_age, "data": data_max_age}' \
+  '    limits = {None: max_age, "data": max_age}'
+
+mutate "表格一行一条地查（严重·一整张表不查）" scripts/check_rules.py \
+  '                if "档位" in cells and "拉取日期" in cells:' \
+  '                if False:'
+
+mutate "经验估计不按日期过期、单独列（中·估计混进事实）" scripts/check_rules.py \
+  '"经验估计": 0}' \
+  '"经验估计": "data"}'
+
+mutate "档位写错要报出来（中·静默放行）" scripts/check_rules.py \
+  '                bad_grade.append((name, label, grade))' \
+  '                pass'
+
 mutate "追问说不方便不回退已答（严重·进度倒退）" scripts/archive.py \
   '        if m and _has_real_answer(m.group(1)):' \
   '        if m and m.group(1).strip() and UNANSWERED not in m.group(1):'

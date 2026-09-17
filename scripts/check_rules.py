@@ -9,11 +9,19 @@
 在用户的会话里现搜，拿到的是搜索摘要而不是一手源，而监管规则是不能靠摘要下结论的。
 规则文件里的 `状态: 待证` 标记同样会被报出来，那是尚未双源互证的条目。
 
+知识库（references/knowledge/）的卡也在扫描内，按条目的 `档位` 算保质期
+（格式见 docs/知识库写卡规范.md）：
+    规则          --max-age 天（默认 90）。没写档位的条目按规则算
+    公开数据、行业报道  --data-max-age 天（默认 180）——谁在做、卖多少钱，半年就旧
+    经验估计      不按日期过期，单独列出来：每次引用都得说「这是估计」
+深卡里「一行一个数」的表格，表头有 `档位` 和 `拉取日期` 两列的，每一行单独算。
+
 只用标准库，Python 3.8+。
 
 用法：
     python3 check_rules.py                # 默认阈值 90 天
     python3 check_rules.py --max-age 30
+    python3 check_rules.py --data-max-age 120
     python3 check_rules.py --refs ../references
 """
 
@@ -25,6 +33,13 @@ from pathlib import Path
 
 DATE_RE = re.compile(r"拉取日期[:：]\s*(\d{4}-\d{2}-\d{2})")
 PENDING_RE = re.compile(r"状态[:：]\s*待证")
+GRADE_RE = re.compile(r"档位[:：]\s*([^`|\s]+)")
+BARE_DATE_RE = re.compile(r"^\s*(\d{4}-\d{2}-\d{2})\s*$")
+LINE_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$")
+
+# 档位 → 保质期。None = 用 --max-age（规则）；"data" = 用 --data-max-age；0 = 不按日期过期
+GRADES = {"规则": None, "公开数据": "data", "行业报道": "data", "经验估计": 0}
+DEFAULT_GRADE = "规则"
 
 # 四道闸：任何行业、任何事都要过这四道，所以这张表不随行业变。
 # (闸, 问的是什么, 对应的规则文件, 覆盖到什么程度)
@@ -61,44 +76,107 @@ def label_for(text: str, pos: int, fallback: str) -> str:
     return re.sub(r"`[^`]*`", "", last).strip(" `") or fallback
 
 
-def scan(refs: Path, max_age: int) -> int:
+def _cells(line: str):
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def entries(text: str, fallback: str):
+    """一份文件里所有带日期的条目：(条目名, 日期原文, 档位原文或 None)。
+
+    两种写法：标题行（或正文行）上的 `拉取日期: …`，档位写在同一行；
+    表格里一行一条——表头要同时有「档位」和「拉取日期」两列才按行读。
+    规则库里的来源表只有「拉取日期」没有「档位」，不按行读，和以前一样。
+    """
+    heading = fallback
+    table = None            # (档位列, 日期列, 标签列)；None = 不在要按行读的表里
+    in_table = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            cells = _cells(stripped)
+            if not in_table:
+                in_table = True
+                table = None
+                if "档位" in cells and "拉取日期" in cells:
+                    table = (cells.index("档位"), cells.index("拉取日期"))
+                continue
+            if table is None or set(stripped) <= set("|-: "):
+                continue
+            g_i, d_i = table
+            if max(g_i, d_i) < len(cells):
+                raw = cells[d_i]
+                m = BARE_DATE_RE.match(raw)
+                yield (f"{heading} › {cells[0]}", m.group(1) if m else raw, cells[g_i] or None)
+            continue
+        in_table = False
+        h = LINE_HEADING_RE.match(line)
+        if h:
+            heading = re.sub(r"`[^`]*`", "", h.group(1)).strip(" `") or fallback
+        for m in DATE_RE.finditer(line):
+            g = GRADE_RE.search(line)
+            yield (heading, m.group(1), g.group(1) if g else None)
+
+
+def scan(refs: Path, max_age: int, data_max_age: int = 180) -> int:
     if not refs.is_dir():
         print(f"找不到 references 目录：{refs}", file=sys.stderr)
         return 1
 
+    kb_files = sorted((refs / "knowledge").rglob("*.md")) if (refs / "knowledge").is_dir() else []
     files = sorted(list(refs.glob("rules-*.md")) + list(refs.glob("failure-modes.md")))
-    if not files:
-        print(f"{refs} 下没有 rules-*.md / failure-modes.md，库为空。")
+    if not files and not kb_files:
+        print(f"{refs} 下没有 rules-*.md / failure-modes.md / knowledge/，库为空。")
         return 0
 
     today = _dt.date.today()
-    fresh, stale, pending = [], [], []
+    fresh, stale, pending, estimates, bad_grade = [], [], [], [], []
+    limits = {None: max_age, "data": data_max_age}
 
-    for path in files:
+    for path in files + kb_files:
         text = path.read_text(encoding="utf-8")
+        name = str(path.relative_to(refs))
 
-        for m in DATE_RE.finditer(text):
-            raw = m.group(1)
+        for label, raw, grade in entries(text, path.stem):
+            grade = grade or DEFAULT_GRADE
+            if grade not in GRADES:
+                # 认不出来的档位按规则算——最短的保质期，宁可多报过期
+                bad_grade.append((name, label, grade))
+                grade = DEFAULT_GRADE
             try:
                 d = _dt.date.fromisoformat(raw)
             except ValueError:
-                stale.append((path.name, f"日期无法解析：{raw}", -1))
+                stale.append((name, f"日期无法解析：{raw}", grade, -1))
                 continue
             age = (today - d).days
-            entry = (path.name, label_for(text, m.start(), path.stem), age)
-            (stale if age > max_age else fresh).append(entry)
+            if GRADES[grade] == 0:
+                estimates.append((name, label, age))
+                continue
+            limit = limits[GRADES[grade]]
+            (stale if age > limit else fresh).append((name, label, grade, age))
 
         for m in PENDING_RE.finditer(text):
-            pending.append((path.name, label_for(text, m.start(), path.stem)))
+            pending.append((name, label_for(text, m.start(), path.stem)))
 
     print(f"规则库：{refs}")
-    print(f"今天 {today.isoformat()}，过期阈值 {max_age} 天\n")
+    print(f"今天 {today.isoformat()}。保质期：规则 {max_age} 天；公开数据、行业报道 {data_max_age} 天；经验估计不按日期过期\n")
 
     if stale:
-        print(f"⚠️  过期 {len(stale)} 条 —— 引用这些条目时必须告诉用户核对日期：")
-        for fname, label, age in stale:
+        print(f"⚠️  过期 {len(stale)} 条 —— 引用这些条目时必须告诉用户「这条最后核对于 X，可能已经变了」：")
+        for fname, label, grade, age in stale:
             age_txt = "日期无效" if age < 0 else f"{age} 天前"
-            print(f"  · [{fname}] {label} —— {age_txt}")
+            print(f"  · [{fname}] {label}（{grade}）—— {age_txt}")
+        print()
+
+    if bad_grade:
+        print(f"❓ 档位写错 {len(bad_grade)} 条 —— 认不出来，先按规则算保质期。改成 规则 / 公开数据 / 行业报道 / 经验估计 之一：")
+        for fname, label, grade in bad_grade:
+            print(f"  · [{fname}] {label}：「{grade}」")
+        print()
+
+    if estimates:
+        print(f"📝 经验估计 {len(estimates)} 条 —— 不按日期过期，但每次引用都要说「这是估计」，并说依据：")
+        for fname, label, age in estimates:
+            print(f"  · [{fname}] {label}（{age} 天前写的）")
         print()
 
     if pending:
@@ -108,8 +186,8 @@ def scan(refs: Path, max_age: int) -> int:
         print()
 
     if fresh:
-        newest = min(a for _, _, a in fresh)
-        oldest = max(a for _, _, a in fresh)
+        newest = min(a for *_, a in fresh)
+        oldest = max(a for *_, a in fresh)
         print(f"📅 拉取日期在保质期内 {len(fresh)} 条（{newest}–{oldest} 天前抄的）")
         print("   这只说明我们最近抄过它，不说明那条法规还在生效。")
         print("   实测里一条 2023 年就被废止的规章在这里显示为绿——四次独立诊断都撞到了它。")
@@ -151,6 +229,8 @@ def scan(refs: Path, max_age: int) -> int:
                    if p.name not in {g[2] for g in GATES if g[2]})
     if extra:
         print(f"  （不属于闸门、但同样在扫描内：{'、'.join(extra)}）")
+    if kb_files:
+        print(f"  （知识库 knowledge/ 下 {len(kb_files)} 份也在扫描内，按档位算保质期）")
     print()
     print("用户的业务不在覆盖范围内时，正确做法是明说不知道并给出查询链接，")
     print("也不要因为日期是绿的就以为那条法规还有效——那是两件事。")
@@ -161,10 +241,11 @@ def scan(refs: Path, max_age: int) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="检查规则库条目是否过期")
-    ap.add_argument("--max-age", type=int, default=90, help="过期阈值（天），默认 90")
+    ap.add_argument("--max-age", type=int, default=90, help="规则的过期阈值（天），默认 90")
+    ap.add_argument("--data-max-age", type=int, default=180, help="公开数据、行业报道的过期阈值（天），默认 180")
     ap.add_argument("--refs", type=Path, default=None, help="references 目录路径")
     args = ap.parse_args()
-    return scan(args.refs or default_refs(), args.max_age)
+    return scan(args.refs or default_refs(), args.max_age, args.data_max_age)
 
 
 if __name__ == "__main__":

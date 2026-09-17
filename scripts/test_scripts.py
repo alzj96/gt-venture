@@ -1618,6 +1618,90 @@ class TestCheckRules(unittest.TestCase):
             self.assertIn("日期无效", r.stdout)
 
 
+class TestCheckRulesKnowledge(unittest.TestCase):
+    """知识卡按档位算保质期：谁在做、卖多少钱半年就旧，法规条文三个月复核一次。
+
+    每条用例只放撞那一道守卫的条目；「过期」一节单独切出来断言，
+    免得别的段落里恰好出现同一个名字让测试假绿。
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.refs = Path(self._tmp.name)
+        (self.refs / "knowledge").mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @staticmethod
+    def ago(days):
+        import datetime as _dt
+        return (_dt.date.today() - _dt.timedelta(days=days)).isoformat()
+
+    def card(self, body, name="品类-测试.md"):
+        (self.refs / "knowledge" / name).write_text(body, encoding="utf-8")
+        return run(CHECK, "--refs", self.refs).stdout
+
+    @staticmethod
+    def block(out, marker):
+        """从 marker 那一行起，到下一个空行为止。"""
+        if marker not in out:
+            return ""
+        return out[out.index(marker):].split("\n\n", 1)[0]
+
+    def test_knowledge_cards_are_scanned(self):
+        """[严重·过期没人知道] 扫描只看 rules-*.md 的话，knowledge/ 下的卡永远是绿的。"""
+        out = self.card(f"# 规则：测试\n## 陈年规则 `档位: 规则` `拉取日期: {self.ago(400)}`\n", "规则-测试.md")
+        self.assertIn("knowledge/规则-测试.md", self.block(out, "⚠️"))
+
+    def test_untagged_entry_counts_as_a_rule(self):
+        """[严重·迁移后变宽松] 没写档位的按规则算（90 天）。
+
+        现有 rules-*.md 都没写档位，迁进来要能直接被正确检查；
+        默认成公开数据的话，一条 120 天没核的法规会一直是绿的。
+        """
+        out = self.card(f"# 规则：测试\n## 没写档位 `拉取日期: {self.ago(120)}`\n")
+        self.assertIn("没写档位", self.block(out, "⚠️"))
+
+    def test_public_data_gets_its_own_longer_shelf_life(self):
+        """[中·天天误报] 公开数据 180 天，不跟规则的 90 天。
+
+        120 天前抄的价目表还没过期；按 90 天算，深卡会整片报红，
+        报多了就没人看了。200 天的那条要报——证明它真的被检查了，不是被跳过了。
+        """
+        out = self.card(
+            f"# 品类：测试\n## 价目 `档位: 公开数据` `拉取日期: {self.ago(120)}`\n"
+            f"## 玩家 `档位: 公开数据` `拉取日期: {self.ago(200)}`\n")
+        stale = self.block(out, "⚠️")
+        self.assertNotIn("价目", stale)
+        self.assertIn("玩家", stale)
+
+    def test_table_rows_are_checked_one_by_one(self):
+        """[严重·一整张表不查] 深卡里谁在做、收多少钱是表格，一行一个数。
+
+        只认标题行上的 `拉取日期:`，表格里那一栏日期永远扫不到。
+        """
+        out = self.card(
+            "# 品类：测试\n## 三、已经在做的\n\n"
+            "| 名字 | 收多少钱 | 档位 | 来源 | 拉取日期 |\n| --- | --- | --- | --- | --- |\n"
+            f"| 老玩家 | 99 元 | 行业报道 | 某报道 | {self.ago(300)} |\n"
+            f"| 新玩家 | 49 元 | 公开数据 | 官网 | {self.ago(10)} |\n")
+        stale = self.block(out, "⚠️")
+        self.assertIn("老玩家", stale)
+        self.assertNotIn("新玩家", stale)
+
+    def test_estimates_never_expire_but_are_listed_separately(self):
+        """[中·估计混进事实] 经验估计不按日期过期，但单独列出来提醒每次都说是估计。"""
+        out = self.card(f"# 品类：测试\n## 毛利 `档位: 经验估计` `拉取日期: {self.ago(900)}`\n")
+        self.assertNotIn("毛利", self.block(out, "⚠️"))
+        self.assertIn("毛利", self.block(out, "📝"))
+
+    def test_unknown_grade_is_reported(self):
+        """[中·写错档位静默放行] 「公开数剧」认不出来，要报出来，保质期先按最短的算。"""
+        out = self.card(f"# 品类：测试\n## 错字 `档位: 公开数剧` `拉取日期: {self.ago(5)}`\n")
+        self.assertIn("公开数剧", self.block(out, "❓"))
+
+
 KB_LOOKUP = SCRIPTS / "kb_lookup.py"
 
 KB_CARD = """# 品类：奶茶咖啡饮品
