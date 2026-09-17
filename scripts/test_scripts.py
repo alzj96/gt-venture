@@ -1544,6 +1544,18 @@ class TestCheckRules(unittest.TestCase):
         self.assertIn("整格空白", out, "空格没有说清楚它为什么空")
         self.assertIn("12345", out, "空格没有给出查询入口——那才是这一格的产出")
 
+    def test_gate_rule_file_moved_into_knowledge_is_still_found(self):
+        """[严重·迁移后报假的缺口] 规则库迁进 knowledge/ 之后，闸门按文件名认会找不到。
+
+        B25i 把 rules-personal-eligibility.md 迁成 knowledge/规则-主体资格.md。
+        原先的写法只在 references/rules-*.md 的文件名里找，迁走的那一格就会报
+        「规则文件不在」——卡明明在，输出却说「人」这道闸没有规则，
+        模型会跳过最致命的那一道。
+        """
+        out = run(CHECK).stdout
+        self.assertNotIn("规则文件不在", out, f"迁进 knowledge/ 的闸门规则文件被报成不在：\n{out}")
+        self.assertIn("· 一、人", out, "「人」这道闸没有被认成有规则")
+
     def test_says_the_channel_rules_are_wechat_only(self):
         """[中·平台偏向] 类目库只覆盖微信小程序，第三轮差分撞到过抖音电商对不上。
 

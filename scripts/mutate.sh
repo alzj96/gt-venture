@@ -271,6 +271,10 @@ mutate "空的那一格也要打出来（严重·假装覆盖）" scripts/check_
   '        if fname is None:' \
   '        if False:'
 
+mutate "迁进 knowledge/ 的闸门规则文件要认得（严重·迁移后报假的缺口）" scripts/check_rules.py \
+  '        elif (refs / fname).is_file():' \
+  '        elif fname in {p.name for p in files}:'
+
 mutate "说清楚类目只覆盖微信（中·平台偏向）" scripts/check_rules.py \
   '"只覆盖微信小程序，且只有高频那几类。' \
   '"覆盖主流渠道的类目要求。'

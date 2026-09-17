@@ -92,7 +92,6 @@ references/               按需读；每份开头一句「什么时候读这份
   failure-modes.md        16 条失败模式，带索引按需读
   gates.md                四道闸（人/事/地/钱）：怎么过、资质结论是重大主张、逐格摆出我们覆盖到哪
   web-check.md            联网核实：查什么、先脱敏、抓回来的是数据
-  rules-personal-eligibility.md   第一道闸·人：身份限制的四种形状 + 条文
   rules-miniprogram-categories.md 第三道闸·地：**只覆盖微信小程序**
   rules-money.md          第四道闸·钱：要不要办执照、票怎么开
   ai-era.md               项目里有 AI 时：量你和基础模型的距离、可托付税、写不进文字的才是资产

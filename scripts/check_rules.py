@@ -42,9 +42,11 @@ GRADES = {"规则": None, "公开数据": "data", "行业报道": "data", "经�
 DEFAULT_GRADE = "规则"
 
 # 四道闸：任何行业、任何事都要过这四道，所以这张表不随行业变。
-# (闸, 问的是什么, 对应的规则文件, 覆盖到什么程度)
+# (闸, 问的是什么, 对应的规则文件（相对 references/ 的路径）, 覆盖到什么程度)
+# 规则库迁进 knowledge/ 之后文件名和目录都变了，按路径认，不按文件名认——
+# 按文件名认的话，迁走的那一格会报「规则文件不在」，而卡明明就在 knowledge/ 里。
 GATES = [
-    ("一、人", "这个人能不能做这件事", "rules-personal-eligibility.md",
+    ("一、人", "这个人能不能做这件事", "knowledge/规则-主体资格.md",
      "覆盖：在编教师 / 公务员 / 事业单位 / 在校学生 / 在职副业 / 职务成果 / 个人接单的税。\n"
      "     未覆盖：医生、律师、会计师、军人、国企任职、外籍、失信被执行人。"),
     ("二、事", "这件事本身要不要许可", None,
@@ -213,12 +215,11 @@ def scan(refs: Path, max_age: int, data_max_age: int = 180) -> int:
     # 四道闸不挑行业（人 / 事 / 地 / 钱），内容永远不全，但框架必须完整——
     # 所以空的那一格也要打出来，而且要打得比有的那几格更显眼。
     print("按四道闸看覆盖度（框架见 references/gates.md）：")
-    present = {p.name for p in files}
     for gate, question, fname, note in GATES:
         if fname is None:
             print(f"  ✗ {gate}：{question}")
             print(f"     {note}")
-        elif fname in present:
+        elif (refs / fname).is_file():
             print(f"  · {gate}：{question}")
             print(f"     {note}")
         else:
@@ -226,7 +227,7 @@ def scan(refs: Path, max_age: int, data_max_age: int = 180) -> int:
     # 失败模式库不是闸门，但它同样会过期（反例失效、竞品收费了、法规变了），
     # 所以它在保质期扫描里，得在这儿露个名字，否则没人知道它也被扫了。
     extra = sorted(p.name for p in files
-                   if p.name not in {g[2] for g in GATES if g[2]})
+                   if p.name not in {Path(g[2]).name for g in GATES if g[2]})
     if extra:
         print(f"  （不属于闸门、但同样在扫描内：{'、'.join(extra)}）")
     if kb_files:
