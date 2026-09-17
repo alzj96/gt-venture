@@ -1618,5 +1618,144 @@ class TestCheckRules(unittest.TestCase):
             self.assertIn("日期无效", r.stdout)
 
 
+KB_LOOKUP = SCRIPTS / "kb_lookup.py"
+
+KB_CARD = """# 品类：奶茶咖啡饮品
+
+**什么时候读这份**：kb_lookup 命中这一行时。
+
+关键词：奶茶、茶饮、饮品店、现制饮品
+
+## 一、这一行常见的做法
+
+加盟、自营。
+
+### 加盟
+
+交加盟费。
+
+## 二、单位经济的量级
+
+没查到。
+
+```markdown
+## 模板里的假标题
+```
+"""
+
+
+class TestKbLookup(Base):
+    """知识库查询：先调脚本、只读命中的那一两节，别把全行业的卡整份读进对话。
+
+    每条测试只撞一道守卫：用例里的查询词特意挑成只有一条路能命中。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.ws / "skill"
+        kb = self.root / "references" / "knowledge"
+        kb.mkdir(parents=True)
+        (kb / "品类-奶茶咖啡饮品.md").write_text(KB_CARD, encoding="utf-8")
+
+    def look(self, *terms):
+        r = run(KB_LOOKUP, "--root", self.root, *terms)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_heading_hit_reports_file_path_and_lines(self):
+        """查的词在标题里：报出文件、起止行、祖先链。"""
+        out = self.look("单位经济")
+        self.assertIn("references/knowledge/品类-奶茶咖啡饮品.md", out)
+        self.assertIn("第 15–21 行", out)
+        self.assertIn("品类：奶茶咖啡饮品 › 二、单位经济的量级", out)
+
+    def test_section_range_includes_its_subsections_and_starts_on_the_heading(self):
+        """[中·读半节] 一节要读到下一个同级标题之前，子标题算在里面。
+
+        只读到子标题前面，「加盟交多少钱」这种写在子标题下的就漏了。
+        """
+        out = self.look("常见的做法")
+        self.assertIn("第 7–14 行", out)
+
+    def test_card_title_hit_gives_only_the_preamble(self):
+        """[中·整份读] 卡的大标题命中时只给开头那一段。
+
+        一级标题按「读到下一个同级标题」算，就是整份卡——模型拿到
+        「第 1–107 行」会整份读，这个脚本等于白写。
+        """
+        out = self.look("咖啡饮品")
+        self.assertIn("第 1–6 行", out)
+
+    def test_synonym_in_keyword_line_hits(self):
+        """[严重·同义叫法查不到] 他说「茶饮」，卡叫「奶茶咖啡饮品」。
+
+        标题里没有「茶饮」，只有写卡人放进 `关键词：` 那一行的才找得到。
+        """
+        out = self.look("茶饮")
+        self.assertIn("品类-奶茶咖啡饮品.md", out)
+        self.assertIn("关键词「茶饮」", out)
+
+    def test_spoken_phrase_that_contains_a_keyword_hits(self):
+        """[严重·口语查不到] 他说「开奶茶店」，关键词是「奶茶」。
+
+        用户的原话比关键词长。只查「关键词里含查的词」这一个方向，
+        他怎么说都对不上。
+        """
+        out = self.look("开奶茶店")
+        self.assertIn("品类-奶茶咖啡饮品.md", out)
+        self.assertIn("关键词「奶茶」", out)
+
+    def test_no_hit_says_the_knowledge_base_does_not_have_it(self):
+        """[严重·查不到时编] 没命中要明说，并指到下一步：联网 + 记缺口。
+
+        什么都不打，模型会以为脚本没跑通，然后按自己的印象接着说。
+        """
+        out = self.look("潜水装备")
+        self.assertIn("「潜水装备」：知识库没有", out)
+        self.assertIn("知识库缺口：潜水装备", out)
+        self.assertNotIn("品类-奶茶咖啡饮品.md", out)
+
+    def test_single_character_term_is_refused(self):
+        """[中·一个字命中一大片] 「茶」能命中所有沾茶的节，等于没查。"""
+        out = self.look("茶")
+        self.assertIn("太短", out)
+        self.assertNotIn("品类-奶茶咖啡饮品.md", out)
+
+    def test_numbered_meta_files_are_not_returned_as_cards(self):
+        """[中·把索引当卡] 00-索引、01-怎么用 是说明，不是卡。
+
+        全行业的索引整份读进来本身就会拖慢每一轮；它被当成命中返回，
+        模型就会去读它。
+        """
+        kb = self.root / "references" / "knowledge"
+        (kb / "00-索引.md").write_text("# 知识库索引\n\n## 入口一览\n", encoding="utf-8")
+        out = self.look("入口一览")
+        self.assertIn("知识库没有", out)
+        self.assertNotIn("00-索引.md", out)
+
+    def test_hits_beyond_the_limit_are_counted_not_listed(self):
+        """[中·刷屏] 一个宽泛的词命中几十节时，只列前几节，说还有多少。"""
+        kb = self.root / "references" / "knowledge"
+        (kb / "品类-上门.md").write_text(
+            "# 品类：上门\n\n## 上门服务一\n\n## 上门服务二\n\n## 上门服务三\n", encoding="utf-8")
+        r = run(KB_LOOKUP, "--root", self.root, "--limit", "2", "上门服务")
+        listed = [l for l in r.stdout.splitlines() if "品类-上门.md" in l]
+        self.assertEqual(len(listed), 2, r.stdout)
+        self.assertIn("还有 1 节没列", r.stdout)
+
+    def test_rules_library_outside_knowledge_dir_is_searched(self):
+        """[中·迁移前查不到规则] 横向规则迁进 knowledge/ 之前，还住在 references/rules-*.md。"""
+        (self.root / "references" / "rules-prepaid.md").write_text(
+            "# 规则库：预付式消费\n\n## P1 收预付款必须订立书面合同 `拉取日期: 2026-09-15`\n", encoding="utf-8")
+        out = self.look("书面合同")
+        self.assertIn("references/rules-prepaid.md", out)
+        self.assertNotIn("拉取日期", out.split("（")[0], "标题里的元数据标记不该当成标题")
+
+    def test_headings_inside_code_blocks_are_ignored(self):
+        """[中·命中模板] 写卡规范和卡里的模板、示例全是代码块里的 # 标题。"""
+        out = self.look("模板里的假标题")
+        self.assertIn("知识库没有", out)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -214,6 +214,55 @@ mutate "参考文件之间的链接要真存在（中·挪文件时断）" refer
   '(asking.md#要用户选的时候怎么摆)' \
   '(ask.md#要用户选的时候怎么摆)'
 
+# kb_lookup：每条变异拆掉一道守卫，对应的测试只能从那一条路命中。
+mutate "关键词那一行要被读进去（严重·同义叫法查不到）" scripts/kb_lookup.py \
+  '            heads[-1]["keywords"] += [w for w in KEYWORD_SPLIT.split(k.group(1)) if w]' \
+  '            heads[-1]["keywords"] += []'
+
+mutate "他的说法里含着关键词也算命中（严重·口语查不到）" scripts/kb_lookup.py \
+  '        if k in t:      # 他的说法里含着关键词' \
+  '        if False:      # 他的说法里含着关键词'
+
+mutate "标题里含查的词算命中（中·标题查不到）" scripts/kb_lookup.py \
+  '    if best[0] == 0 and t in norm(sec["title"]):' \
+  '    if False:'
+
+mutate "没命中要明说知识库没有（严重·查不到时编）" scripts/kb_lookup.py \
+  '            print(f"「{term}」：知识库没有。\n")' \
+  '            pass'
+
+mutate "一个字的词不查（中·命中一大片）" scripts/kb_lookup.py \
+  'MIN_LEN = 2 ' \
+  'MIN_LEN = 1 '
+
+mutate "一节读到下一个同级标题（中·读半节）" scripts/kb_lookup.py \
+  '            if nxt["level"] <= h["level"] or h["level"] == 1:' \
+  '            if True:'
+
+mutate "卡的大标题只给开头一段（中·整份读）" scripts/kb_lookup.py \
+  ' or h["level"] == 1:' \
+  ':'
+
+mutate "行号从 1 数（中·读错行）" scripts/kb_lookup.py \
+  '    for i, line in enumerate(lines, 1):' \
+  '    for i, line in enumerate(lines):'
+
+mutate "编号开头的说明文件不当卡（中·把索引当卡）" scripts/kb_lookup.py \
+  'if not META_FILE.match(p.name)]' \
+  'if True]'
+
+mutate "超过上限只报数不列（中·刷屏）" scripts/kb_lookup.py \
+  '        for score, f, sec, why in hits[:args.limit]:' \
+  '        for score, f, sec, why in hits:'
+
+mutate "迁移前的 rules-*.md 也要查（中·规则查不到）" scripts/kb_lookup.py \
+  '    files += sorted((root / "references").glob("rules-*.md"))' \
+  '    files += []'
+
+mutate "代码块里的 # 不算标题（中·命中模板）" scripts/kb_lookup.py \
+  '            in_code = not in_code' \
+  '            in_code = False'
+
 mutate "术语卡开着时按钮让位（中·压在解释上）" scripts/report_html.py \
   "    document.body.classList.add('term-open');" \
   "    void 0;"

@@ -107,6 +107,7 @@ references/               按需读；每份开头一句「什么时候读这份
 scripts/
   archive.py              档案读写、断点续跑、闸门与报告存档
   check_rules.py          规则保质期检查（新鲜度 ≠ 覆盖范围）
+  kb_lookup.py            查知识库：传关键词，返回命中的文件和章节行号，只读那几节
   resources.py            资源档案、同意门三档、脱敏
   pattern.py              跨项目模式、正向信号、敏感问题、退役
   report_html.py          把报告导成单文件 HTML（样式内联、不连外网、能转发）
