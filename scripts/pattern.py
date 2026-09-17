@@ -87,7 +87,7 @@ LEAK_PATTERNS = [
 #
 # 为什么值得单独做：不方便答的问题往往正是最关键的那个（在编身份、
 # 合伙人、钱的来源）。硬问的结果不是拿到答案，是他不再来第二次。
-# 而诊断价值可以不靠他开口拿到 —— 见 SKILL.md 的「换成自查表」。
+# 而诊断价值可以不靠他开口拿到 —— 见 references/declined.md 的「换成自查表」。
 _SENSITIVE_HINT = {
     1: "需求验证（付费/花时间的证据）",
     2: "现状替代品",
@@ -132,7 +132,7 @@ def read_sensitive() -> dict:
 def write_sensitive(data: dict) -> None:
     body = ("# 这个用户不方便回答的问题\n\n"
             "只记问号和次数，不记理由 —— 理由本身往往正是他不想留下的东西。\n"
-            "下次诊断到这几问，改成自查表的问法（见 SKILL.md），不要再直接问。\n"
+            "下次诊断到这几问，改成自查表的问法（见 references/declined.md），不要再直接问。\n"
             f"\n最后更新: {today()}\n\n")
     for q in sorted(data):
         body += f"- 第{q}问　｜　{data[q]} 次　｜　{_SENSITIVE_HINT.get(q, '')}\n"
@@ -365,7 +365,7 @@ def cmd_show(_args) -> int:
             print(f"{mark}第{q}问（{_SENSITIVE_HINT.get(q, '')}）—— {sens[q]} 次")
         print()
         print("这几问改用自查表的问法：把结论摆出来让他自己对照，不要求他开口。")
-        print("见 SKILL.md「用户不方便回答时」。\n")
+        print("见 references/declined.md「用户不方便回答时」。\n")
         print("━" * 52 + "\n")
 
     data = parse()

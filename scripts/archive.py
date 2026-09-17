@@ -47,7 +47,7 @@ MODES = {"副业": "副业体检：四问，卖的是自己的时间和手艺，
 # 这个常量写了三轮都没人调用 —— save 一直在报「进度 4/6，下一问是第 5 问」，
 # 而副业根本没有第 5 问。第一次真跑副业这条路才发现。
 MODE_STEPS = {"副业": 4, "筛查": 6, "诊断": 6}
-# 筛查留满六问的小节：SKILL.md 说筛查答过的能直接升级成全面诊断，
+# 筛查留满六问的小节：references/light-screen.md 说筛查答过的能直接升级成全面诊断，
 # 砍掉就升不上去了。筛查错的不是分母，是 save 那句「下一问是第 2 问」——
 # 筛查只问第 1 问，做完就停。
 SIDE_TITLES = {
@@ -423,7 +423,7 @@ def _unanswered_before(body: str, step: int, mode: str) -> list:
     return out
 
 
-# SKILL.md「说话方式」里点名的词。它们的共同点是听起来专业、实际没信息。
+# references/voice.md「说话方式」里点名的词。它们的共同点是听起来专业、实际没信息。
 # WorkBuddy + Hy4 实测开场就用了「赛道」——写在文档里拦不住小模型，
 # 报告落盘这一刻再拦一次。只警告不拒绝：误伤一份报告比漏一个词贵。
 BANNED = ("赛道", "闭环", "抓手", "势能", "打法", "生态位", "赋能")
@@ -453,7 +453,7 @@ def cmd_report(args) -> int:
     hits = [w for w in BANNED if w in report]
     if hits:
         print(f"⚠️  报告里有禁语：{'、'.join(hits)} —— 换成具体的话"
-              f"（谁、做什么、多少钱），见 SKILL.md「说话方式」。改完重新 report 一次。")
+              f"（谁、做什么、多少钱），见 references/voice.md「说话方式」。改完重新 report 一次。")
     # 筛查本来就只问第 1 问，拿六问的分母去量它，每次都会报一句假警告。
     if mode != "筛查" and done < top:
         print(f"注意：只答了 {done}/{top} 问，报告里必须标明哪几问未答")

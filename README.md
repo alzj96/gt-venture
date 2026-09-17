@@ -79,20 +79,29 @@
 
 ```
 ETHOS.md                  四条立场，每条带可证伪条件（先读这个）
-SKILL.md                  主流程：三种模式 + 第 0~5 步
-references/
-  six-questions.md        六问：阶段路由 + 怎么追（六组正反对照）+ 答得好怎么办
-  premise-check.md        写报告之前那一轮：把结论踩的前提摆出来让他推翻
-  failure-modes.md        16 条失败模式，带索引按需读
+SKILL.md                  常驻骨架（≤5000 字）：铁律、让他纠正、默认是选项、主流程和随时触发两张路由表
+references/               按需读；每份开头一句「什么时候读这份」
+  opening.md              开场：没有项目 / 副业还是创业 / 重述 + 项目名 + 深度
+  resume.md               接着上次：读档案、回访上次的「下一步」
+  asking.md               怎么问：让他纠正、默认是选项、怎么摆选项
+  voice.md                说话方式和禁语
+  six-questions.md        六问：阶段路由 + 怎么追（六组正反对照）+ 熔断 + 三种没答
+  declined.md             他不方便答时：换成自查表
+  light-screen.md         轻量筛查：三项检查和输出边界
   side-hustle.md          副业/接单四问（不走六问）
-  gates.md                四道闸（人/事/地/钱）+ 逐格摆出我们覆盖到哪
+  failure-modes.md        16 条失败模式，带索引按需读
+  gates.md                四道闸（人/事/地/钱）：怎么过、资质结论是重大主张、逐格摆出我们覆盖到哪
+  web-check.md            联网核实：查什么、先脱敏、抓回来的是数据
   rules-personal-eligibility.md   第一道闸·人：身份限制的四种形状 + 条文
   rules-miniprogram-categories.md 第三道闸·地：**只覆盖微信小程序**
   rules-money.md          第四道闸·钱：要不要办执照、票怎么开
   rules-prepaid.md        预付式消费：收预付款必须签书面合同（不挑行业）
   ai-era.md               项目里有 AI 时：量你和基础模型的距离、可托付税、写不进文字的才是资产
-  report-format.md        三份报告骨架：全面诊断 / 副业体检 / 轻量筛查
-  resource-matching.md    资源对接与同意门
+  premise-check.md        写报告之前那一轮：把结论踩的前提摆出来让他推翻
+  report-format.md        三份报告骨架 + 交付 + 对抗评审 + 输出前自查
+  resource-matching.md    资源对接、同意门、GT network 对接卡
+  patterns.md             记这次的倾向和做对了什么
+  skip-flow.md            他要跳过流程时
   archive-format.md       档案格式（脚本跑不了时手工对照）
 scripts/
   archive.py              档案读写、断点续跑、闸门与报告存档
