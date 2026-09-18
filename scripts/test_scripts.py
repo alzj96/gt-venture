@@ -448,6 +448,17 @@ class TestSkillLayout(unittest.TestCase):
                     broken.append(f"{f.relative_to(SKILL_ROOT)} → {link}")
         self.assertEqual(broken, [], "这些链接指向不存在的文件：\n" + "\n".join(broken))
 
+    def test_gate_step_routes_through_the_knowledge_base(self):
+        """[严重·库建了没接线] 知识库有 60 多份卡，主流程第 2 步不指过去就等于没建。
+
+        B-接入之前，第 2 步只指 gates.md。模型过闸时不会想到先跑 kb_lookup.py——
+        要么只凭 gates.md 那几格说，要么直接联网，把库里有逐字原文的许可说成「不知道」。
+        """
+        text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+        step2 = next((l for l in text.splitlines() if l.startswith("| 2 |")), "")
+        self.assertIn("kb_lookup.py", step2, "主流程第 2 步没让先跑 kb_lookup.py")
+        self.assertIn("references/knowledge/01-怎么用.md", step2, "主流程第 2 步没指到「知识库怎么用」")
+
 
 class TestModes(Base):
     """副业体检和轻量筛查这两条路，第一次真跑出来的东西。
@@ -1532,21 +1543,48 @@ class TestCheckRules(unittest.TestCase):
         r = run(CHECK)
         self.assertIn("failure-modes.md", r.stdout)
 
-    def test_every_gate_is_listed_even_the_empty_one(self):
-        """[严重·假装覆盖] 空的那一格不打出来，用户就以为四道闸都查过了。
+    def test_every_gate_is_listed_and_says_what_it_does_not_cover(self):
+        """[严重·假装覆盖] 四道闸每一格都要打出来，而且要照实说没抓什么。
 
-        「事」这一格（经营许可）整格没有内容。内容可以永远不全，
-        但框架必须永远完整——空格要打得比有内容的那几格更显眼。
+        「事」这一格原先整格空白，那时断言的是它被打成 ✗、写着「整格空白」。
+        B5–B25 做完 20 张门类骨架卡和横向规则卡之后，「整格空白」本身成了假话——
+        说少了一样误导：模型读到它会跳过知识库直接联网，把有逐字原文的许可说成不知道。
+        现在断言：四格都在；「事」那格说清楚没抓部门规章和地方规定，并给出查询入口。
         """
         out = run(CHECK).stdout
         for gate in ["一、人", "二、事", "三、地", "四、钱"]:
             self.assertIn(gate, out, f"少了一道闸：{gate}")
-        self.assertIn("✗ 二、事", out, "空的那一格没有被标成未覆盖")
-        # 只断言那个 ✗ 不够：把空格的分支砍掉之后，它会掉进
-        # 「规则文件不在」那条通用分支里，照样打出 ✗ —— 测试仍然绿，
-        # 而用户丢掉的恰恰是最要紧的那半句「遇到就说不知道，去哪儿查」。
-        self.assertIn("整格空白", out, "空格没有说清楚它为什么空")
-        self.assertIn("12345", out, "空格没有给出查询入口——那才是这一格的产出")
+        self.assertNotIn("整格空白", out, "「事」那格已经有门类卡了，还在说整格空白")
+        self.assertIn("部门规章", out, "「事」那格没说清楚没抓的那一半")
+        self.assertIn("12345", out, "没覆盖的那一半没有给出查询入口——那才是这一格的产出")
+
+    def test_gate_with_no_cards_is_marked_missing(self):
+        """[严重·假装覆盖] 门类骨架卡一张都不在时，「事」那格要打 ✗，不能照样打一个点。
+
+        「事」「地」两格按通配符数卡。数卡那一行坏了（比如不管有没有都当有），
+        卡被删了、目录挪了，输出还是「· 二、事」，模型就以为库在。
+        """
+        with tempfile.TemporaryDirectory() as t:
+            refs = Path(t)
+            (refs / "knowledge").mkdir()
+            # 放一张别的卡，库不为空才会走到闸门那一段；门类卡一张都不放
+            import datetime as _dt
+            (refs / "knowledge" / "规则-测试.md").write_text(
+                f"# 测试\n## T1 一条 `档位: 规则` `拉取日期: {_dt.date.today().isoformat()}`\n",
+                encoding="utf-8")
+            out = run(CHECK, "--refs", refs).stdout
+        self.assertIn("✗ 二、事", out, f"一张门类卡都没有，「事」那格却没打 ✗：\n{out}")
+        self.assertIn("规则文件不在（knowledge/门类-*.md）", out)
+
+    def test_money_gate_does_not_call_the_exemption_unverified(self):
+        """[中·说少了] B27a 已经抓到「零星小额」的原文（电子商务经营者登记 D1、D5）。
+
+        闸门说明还写「待证：豁免那条线」的话，模型会把有原文的那条当成不知道，
+        他最常问的「我这点量要不要办执照」就只剩一句「去问 12345」。
+        """
+        out = run(CHECK).stdout
+        self.assertNotIn("待证：豁免那条线", out)
+        self.assertIn("零星小额", out)
 
     def test_gate_rule_file_moved_into_knowledge_is_still_found(self):
         """[严重·迁移后报假的缺口] 规则库迁进 knowledge/ 之后，闸门按文件名认会找不到。
@@ -1565,7 +1603,9 @@ class TestCheckRules(unittest.TestCase):
 
         不说清楚，模型会拿微信的类目去套别的渠道。
         """
-        self.assertIn("只覆盖微信小程序", run(CHECK).stdout)
+        # B26 做了抖音、其他渠道两张平台卡之后，原来那句「只覆盖微信小程序」说少了；
+        # 现在的说法是「类目表逐栏核过的只有微信」，别的平台规则没核到——断言的还是这一件事。
+        self.assertIn("类目表逐栏核过的只有微信小程序", run(CHECK).stdout)
 
     def test_side_hustle_reference_exists_and_has_four_questions(self):
         """副业四问是独立的问题集，不是六问的子集。少一问就不成立。"""

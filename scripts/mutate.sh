@@ -209,6 +209,14 @@ mutate "路由表的链接要真存在（严重·路由指空）" SKILL.md \
   '(references/declined.md)' \
   '(references/decline.md)'
 
+mutate "过闸先跑 kb_lookup（严重·库建了没接线）" SKILL.md \
+  '每块跑 `kb_lookup.py`，只读命中的节' \
+  '每块想一想属于哪一行'
+
+mutate "过闸要指到「知识库怎么用」（严重·库建了没接线）" SKILL.md \
+  '[知识库怎么用](references/knowledge/01-怎么用.md)、[四道闸](references/gates.md) |' \
+  '[四道闸](references/gates.md) |'
+
 # references 里的链接也要被扫到，不能只查 SKILL.md。
 mutate "参考文件之间的链接要真存在（中·挪文件时断）" references/opening.md \
   '(asking.md#要用户选的时候怎么摆)' \
@@ -267,17 +275,25 @@ mutate "术语卡开着时按钮让位（中·压在解释上）" scripts/report
   "    document.body.classList.add('term-open');" \
   "    void 0;"
 
-mutate "空的那一格也要打出来（严重·假装覆盖）" scripts/check_rules.py \
-  '        if fname is None:' \
-  '        if False:'
+mutate "一张卡都数不到要打 ✗（严重·假装覆盖）" scripts/check_rules.py \
+  '        hits = sorted(refs.glob(fname))' \
+  '        hits = [refs / fname]'
 
 mutate "迁进 knowledge/ 的闸门规则文件要认得（严重·迁移后报假的缺口）" scripts/check_rules.py \
-  '        elif (refs / fname).is_file():' \
-  '        elif fname in {p.name for p in files}:'
+  '        hits = sorted(refs.glob(fname))' \
+  '        hits = sorted(refs.glob(Path(fname).name))'
 
-mutate "说清楚类目只覆盖微信（中·平台偏向）" scripts/check_rules.py \
-  '"只覆盖微信小程序，且只有高频那几类。' \
-  '"覆盖主流渠道的类目要求。'
+mutate "「事」那格说清楚没抓什么（严重·假装覆盖）" scripts/check_rules.py \
+  '"     没抓：部门规章和地方规定（' \
+  '"     另有：各地规定（'
+
+mutate "说清楚类目表只核过微信（中·平台偏向）" scripts/check_rules.py \
+  '"类目表逐栏核过的只有微信小程序（' \
+  '"覆盖主流渠道的类目要求（'
+
+mutate "钱那格不把有原文的豁免线说成待证（中·说少了）" scripts/check_rules.py \
+  '"覆盖：市场主体登记、「零星小额」那条线的原文（电子商务经营者登记 D1、D5）、' \
+  '"覆盖：市场主体登记（已核）。待证：豁免那条线。'
 
 mutate "失败模式库也露名（被扫了却没人知道）" scripts/check_rules.py \
   '    if extra:' \

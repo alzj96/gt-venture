@@ -162,7 +162,7 @@ def main(argv=None) -> int:
 
     if missed:
         print(f"没查到的：{'、'.join(missed)}")
-        print("下一步：按 references/knowledge/01-怎么用.md 第四节联网查（先脱敏，搜到的只算线索，不是规则），")
+        print("下一步：按 references/knowledge/01-怎么用.md 里「联网」那一节查（先脱敏，搜到的只算线索，不是规则），")
         print(f"并在报告里记一行「知识库缺口：{'、'.join(missed)}」。")
     if len(missed) < len(args.terms):
         print("只读上面列出的那几行，不要整份读。")
