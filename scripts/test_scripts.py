@@ -448,6 +448,19 @@ class TestSkillLayout(unittest.TestCase):
                     broken.append(f"{f.relative_to(SKILL_ROOT)} → {link}")
         self.assertEqual(broken, [], "这些链接指向不存在的文件：\n" + "\n".join(broken))
 
+    def test_no_relative_link_points_into_docs_which_is_not_packed(self):
+        """[中·打包后断链] pack.sh 不把 docs/ 打进发行包。
+
+        references 里原来有 5 处 ../docs/差分测试-*.md 的相对链接：仓库里点得开，
+        上面那条断链测试也绿，装进发行包就全是死链。出处要指 docs/ 的，写 GitHub 上的地址。
+        """
+        files = [SKILL_ROOT / "SKILL.md", SKILL_ROOT / "ETHOS.md"]
+        files += sorted((SKILL_ROOT / "references").rglob("*.md"))
+        bad = [f"{f.relative_to(SKILL_ROOT)} → {link}" for f in files
+               for link in _markdown_links(f.read_text(encoding="utf-8"))
+               if "docs/" in link.split("#", 1)[0]]
+        self.assertEqual(bad, [], "这些链接指进 docs/，打包后是断的：\n" + "\n".join(bad))
+
     def test_gate_step_routes_through_the_knowledge_base(self):
         """[严重·库建了没接线] 知识库有 60 多份卡，主流程第 2 步不指过去就等于没建。
 

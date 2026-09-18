@@ -217,6 +217,10 @@ mutate "过闸要指到「知识库怎么用」（严重·库建了没接线）"
   '[知识库怎么用](references/knowledge/01-怎么用.md)、[四道闸](references/gates.md) |' \
   '[四道闸](references/gates.md) |'
 
+mutate "出处不用相对链接指进 docs/（中·打包后断链）" references/opening.md \
+  '(https://github.com/alzj96/gt-venture/blob/main/docs/差分测试-第三轮结果.md)' \
+  '(../docs/差分测试-第三轮结果.md)'
+
 # references 里的链接也要被扫到，不能只查 SKILL.md。
 mutate "参考文件之间的链接要真存在（中·挪文件时断）" references/opening.md \
   '(asking.md#要用户选的时候怎么摆)' \
