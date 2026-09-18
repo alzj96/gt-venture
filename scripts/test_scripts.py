@@ -1200,8 +1200,12 @@ class TestReportHtml(Base):
         f.write_text(report if report is not None else self.REPORT, encoding="utf-8")
         run(ARCHIVE, "report", "--project", project, "--file", str(f), ws=self.ws)
         r = run(REPORT_HTML, "--project", project, ws=self.ws)
-        hits = list((self.ws / "创业档案").glob("*.html"))
-        return r, (hits[0].read_text(encoding="utf-8") if hits else "")
+        # 同一个工作空间里会导出好几份（一个用例连着 _make 两次），
+        # glob 的顺序是文件系统给的顺序，取 hits[0] 会拿到上一次那份——
+        # 2026-09-18 日期一变、文件名跟着变，顺序就翻了，测试莫名其妙变红。
+        # 取最新的那份，和「刚导出的这一份」对得上。
+        hits = sorted((self.ws / "创业档案").glob("*.html"), key=lambda p: p.stat().st_mtime)
+        return r, (hits[-1].read_text(encoding="utf-8") if hits else "")
 
     def test_screening_page_never_calls_itself_a_diagnosis(self):
         """[严重·页面装修拆了正文的台] 筛查报告通篇在说「这不是诊断」。
