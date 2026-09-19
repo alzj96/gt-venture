@@ -1,6 +1,17 @@
 ---
 name: gt-venture
-version: 1.0.0
+slug: gt-venture
+displayName: "创业诊断 · gt-venture"
+version: 1.1.0
+summary: 动手之前把项目问清楚：追问谁付了钱、付给谁，查在中国要过的四道闸（人、事、地、钱）并给出一手法规原文，出报告、存档，下次接着聊。
+license: MIT
+homepage: https://github.com/alzj96/gt-venture
+tags:
+  - 创业
+  - 项目评估
+  - 合规
+  - 副业
+  - 中文
 allowed-tools:
   - Bash
   - Read
