@@ -22,12 +22,13 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 # 仓库自己的门面文件不进包；LICENSE 要进——MIT 要求 included in all copies。
+# 图标只在 SkillHub 网页后台上传用，技能运行用不到；SkillHub 对包里的文件类型有限制，不带进去。
 STAGE=$(mktemp -d); trap 'rm -rf "$STAGE"' EXIT
 NAME=$(basename "$PWD")
 mkdir -p "$STAGE/$NAME"
 git ls-files -z | while IFS= read -r -d '' f; do
   case "$f" in
-    README.md|INSTALL.md|.gitignore|docs/*) continue ;;
+    README.md|INSTALL.md|.gitignore|docs/*|assets/icon.*) continue ;;
   esac
   mkdir -p "$STAGE/$NAME/$(dirname "$f")"
   cp "$f" "$STAGE/$NAME/$f"

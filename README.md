@@ -1,5 +1,7 @@
 # gt-venture · 创业诊断
 
+<img src="assets/icon.svg" width="96" alt="gt-venture 图标：放大镜里的十字把镜片分成四格——四道闸">
+
 面向中国创业者的项目诊断技能。在动手之前把项目问清楚，指出在中国做这件事要过哪几道闸，把结论存档以便下次接着聊。
 
 **主要写给第一次做这件事的人**——学生、刚毕业、想做个副业、有个想法但不知道从哪儿开始验证的。它会区分"没有资源"和"没有优势"，不会把前者当成后者。
@@ -8,7 +10,7 @@
 
 **名字的来历**：`gt` = ground truth，机器学习里那份用来对照的真值——**没有它，任何"准确率"都是自说自话**。这正是这个技能的铁律：没有证据，不给判断。`venture` 是它落的地方；同一个词根下还会有别的 `gt-*`。
 
-安装见 [INSTALL.md](INSTALL.md)。**它站在什么立场上，见 [ETHOS.md](ETHOS.md)**——四条信念，每条都带"什么能推翻它"。诊断不是中立的，同一个项目换一套信念就是另一个结论，所以信念先摆出来，你不同意哪条就知道该打哪份报告的折扣。
+**已上架 [SkillHub](https://skillhub.cn/skills/gt-venture)**：WorkBuddy 打开技能市场的 SkillHub 标签页搜「创业诊断」，或者命令行 `skillhub install gt-venture --dir ~/.workbuddy/skills`（Claude Code 换成 `~/.claude/skills`）。上传 zip、克隆仓库这些装法和装完的首次跑通清单见 [INSTALL.md](INSTALL.md)。**它站在什么立场上，见 [ETHOS.md](ETHOS.md)**——四条信念，每条都带"什么能推翻它"。诊断不是中立的，同一个项目换一套信念就是另一个结论，所以信念先摆出来，你不同意哪条就知道该打哪份报告的折扣。
 
 ---
 
@@ -116,6 +118,7 @@ scripts/
   mutate.sh               变异测试：回滚每个修复，确认测试抓得住（81 条）
   pack.sh                 打发行 zip：从 git ls-files 正面构建，工作区脏就拒绝
 evals/                    16 条 eval + fixture
+assets/                   示例报告、图标（icon.svg / icon.png）
 docs/                     方法论、实测记录、知识库写卡规范和扩建记录（不进发行包）
 ```
 
@@ -187,6 +190,8 @@ bash scripts/mutate.sh            # 变异测试：回滚每个修复，确认�
 python3 scripts/check_rules.py    # 规则和知识卡的保质期、待证、档位
 bash scripts/pack.sh              # 打发行 zip（工作区脏会拒绝）
 ```
+
+**发一版到 SkillHub**：改 SKILL.md 的 `version` → `bash scripts/pack.sh` → 把 zip 解压到一个临时目录，**`LICENSE` 改名成 `LICENSE.txt`**（SkillHub 不收没有扩展名的文件，报 400「不允许的文件类型」）→ `skillhub publish <目录> --dry-run` 先预检 → `skillhub publish <目录> --changelog "这一版改了什么"`。发布后会过安全扫描；CLI 不传图标，图标（`assets/icon.png`，512×512）到网页后台上传。
 
 **测试全绿不等于测试有效。** 这套里曾经有三条摆设用例——测的场景已经被别处的修复顺手挡掉了，把对应修复回滚它照样绿。变异台就是用来证明"这条测试在代码坏掉时真的会红"。加了新测试就把对应的变异也加进 `mutate.sh`。
 

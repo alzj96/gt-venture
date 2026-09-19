@@ -6,9 +6,43 @@
 
 ---
 
+## 最省事：从 SkillHub 装
+
+gt-venture 已经上架 [SkillHub](https://skillhub.cn/skills/gt-venture)（腾讯云的中文 Skill 社区，发布时过了两家安全扫描）。
+
+**WorkBuddy**：打开**技能市场**里的 **SkillHub** 标签页，搜「创业诊断」或 `gt-venture`，点安装。刚发布的版本可能要过一阵才进搜索，搜不到就用下面的命令行。
+
+**命令行**（WorkBuddy、Claude Code 都能用）。先装 SkillHub 的命令行工具：
+
+```bash
+curl -fsSL https://skillhub.cn/install/install.sh | bash -s -- --cli-only
+```
+
+再装到宿主的技能目录——**一定要带 `--dir`**，不带的话它会装进当前目录下的 `./skills/`，宿主找不到：
+
+```bash
+skillhub install gt-venture --dir ~/.workbuddy/skills
+```
+
+```bash
+skillhub install gt-venture --dir ~/.claude/skills
+```
+
+以后升级：
+
+```bash
+skillhub upgrade gt-venture --dir ~/.workbuddy/skills
+```
+
+装完照样要做下面 WorkBuddy 那节的「命令白名单」，再跑一遍「首次跑通清单」。
+
+---
+
 ## WorkBuddy
 
-### 装
+### 装（上传 zip）
+
+从 SkillHub 装的跳过这一小节。
 
 1. 下载 `gt-venture.zip`
 2. 打开 WorkBuddy → 技能 → **添加技能** → **上传技能**
@@ -20,7 +54,7 @@
 
 ### 装完先配一件事：命令白名单
 
-这个技能要调四个 Python 脚本。**默认权限下每次调用都会弹确认**，一次诊断弹十几次，没法用。
+这个技能要调六个 Python 脚本（档案、知识库查询、规则保质期、模式、资源、报告导出）。**默认权限下每次调用都会弹确认**，一次诊断弹十几次，没法用。
 
 去 **设置 → 安全中心 → 命令安全**，把脚本路径前缀加进放行名单。
 
@@ -86,15 +120,21 @@ ls 创业档案/
 
 写不出来 → 这个宿主不支持这个技能的核心功能。
 
-### 3. 规则库读得到
+### 3. 规则库和知识库读得到
 
 ```bash
 python3 <技能目录>/scripts/check_rules.py
 ```
 
-**要看到**：「✓ 有效 N 条」，以及下面那段「上面回答的是规则新不新，不是你这行覆盖没覆盖」的提示。
+**要看到**：「📅 拉取日期在保质期内 N 条」，下面那段「上面回答的只有一件事——这条我们多久没抄过了」的提示，以及「按四道闸看覆盖度」的四格。
 
-看不到规则库覆盖范围清单 → 文件没装全。
+看不到四道闸那四格 → 文件没装全。
+
+```bash
+python3 <技能目录>/scripts/kb_lookup.py 奶茶
+```
+
+**要看到**：命中 `品类-奶茶咖啡饮品.md` 等几节，带行号。说「知识库没有」→ `references/knowledge/` 没装上。
 
 ### 4. 命令白名单配对了（WorkBuddy）
 
@@ -115,7 +155,7 @@ python3 <技能目录>/scripts/pattern.py --workspace "$(pwd)" show
 python3 <技能目录>/scripts/test_scripts.py
 ```
 
-**要看到**：`Ran 52 tests` + `OK`。
+**要看到**：`Ran N tests` + `OK`（N 是这一版的测试条数，1.1.0 是 150）。
 
 有失败的话，是宿主环境和我们的测试环境有差异——把失败的那几条发给我们，别自己改测试绕过去。
 
